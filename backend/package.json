@@ -1,7 +1,7 @@
 {
   "name": "coins-form-payment-api",
   "version": "1.0.0",
-  "description": "Co-insurance payment link service — generates payment links per patient, serves OOP data from Monday.com Subscription Board",
+  "description": "Co-insurance payment link service \u2014 generates payment links per patient, serves OOP data from Monday.com Subscription Board",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -16,7 +16,8 @@
     "cookie-parser": "^1.4.6",
     "jsonwebtoken": "^9.0.2",
     "ioredis": "^5.3.2",
-    "stripe": "^14.0.0"
+    "stripe": "^14.0.0",
+    "pdfkit": "^0.15.0"
   },
   "engines": {
     "node": ">=18"

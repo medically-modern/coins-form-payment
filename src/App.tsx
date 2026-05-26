@@ -1,145 +1,146 @@
 import { useState, useEffect } from "react";
-import { OopEstimateCard } from "@/components/OopEstimateCard";
-import { PaymentForm } from "@/components/PaymentForm";
-import { PAYER_RATE_SCHEDULE, estimateOop } from "@/lib/oopEstimator";
-import type { Patient } from "@/lib/types";
 
 const API_URL = import.meta.env.VITE_API_URL || "https://coins-form-payment-production.up.railway.app";
 
-const INSURANCE_OPTIONS = Object.keys(PAYER_RATE_SCHEDULE).sort();
+interface LineItem {
+  name: string;
+  hcpcCode: string;
+  modifiers: string;
+  coinsuranceAmount: number;
+  deductibleAmount: number;
+  patientOwes: number;
+  secondaryPaidLine: number;
+  quantity: string;
+}
 
-const SERVING_OPTIONS = [
-  "CGM",
-  "Insulin Pump",
-  "Supplies Only",
-  "Insulin Pump + CGM",
-  "Supplies + CGM",
-];
+interface PatientData {
+  name: string;
+  dob: string;
+  dos: string;
+  primaryPayor: string;
+  secondaryPayer: string;
+  lineItems: LineItem[];
+  totalPatientOwes: number;
+  isPaid: boolean;
+  paidAmount: number;
+  paidDate: string;
+  stripeChargeId: string;
+  secondaryStatus: string;
+}
 
 type AppState =
   | { mode: "loading" }
   | { mode: "error"; message: string }
   | { mode: "expired" }
-  | { mode: "manual" }
-  | { mode: "authenticated"; name: string; jwt: string };
+  | { mode: "no-token" }
+  | { mode: "authenticated"; jwt: string; data: PatientData }
+  | { mode: "paying" }
+  | { mode: "success" };
 
 export default function App() {
   const [appState, setAppState] = useState<AppState>({ mode: "loading" });
-  const [patient, setPatient] = useState<Patient>({
-    primaryInsurance: "",
-    secondaryInsurance: "",
-    serving: "",
-    referralSource: "",
-    qtyInf1: "0",
-    qtyInf2: "0",
-    deductibleRemaining: "",
-    stediCoinsurance: "",
-    oopMaxRemaining: "",
-  });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
+    const status = params.get("status");
 
     if (!token) {
-      setAppState({ mode: "manual" });
+      setAppState({ mode: "no-token" });
       return;
     }
 
-    fetch(`${API_URL}/auth/verify/${token}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data.success) {
-          setAppState({ mode: "expired" });
-          return;
-        }
+    // If returning from Stripe success
+    if (status === "success") {
+      setAppState({ mode: "success" });
+      // Still verify + load data for the receipt
+      verifyAndLoad(token, true);
+      return;
+    }
 
-        const jwt = data.token;
-
-        return fetch(`${API_URL}/api/me`, {
-          headers: { Authorization: `Bearer ${jwt}` },
-        })
-          .then((res) => res.json())
-          .then((patientData) => {
-            setPatient({
-              primaryInsurance: patientData.primaryInsurance || "",
-              secondaryInsurance: patientData.secondaryInsurance || "",
-              serving: patientData.serving || "",
-              referralSource: patientData.referralSource || "",
-              qtyInf1: patientData.qtyInf1 || "0",
-              qtyInf2: patientData.qtyInf2 || "0",
-              deductibleRemaining: patientData.deductibleRemaining || "",
-              stediCoinsurance: patientData.stediCoinsurance || "",
-              oopMaxRemaining: patientData.oopMaxRemaining || "",
-            });
-            setAppState({
-              mode: "authenticated",
-              name: patientData.name || "Patient",
-              jwt,
-            });
-          });
-      })
-      .catch(() => {
-        setAppState({ mode: "error", message: "Unable to connect to the server. Please try again later." });
-      });
+    verifyAndLoad(token, false);
   }, []);
 
-  const update = (field: keyof Patient, value: string) => {
-    setPatient((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const isAuthenticated = appState.mode === "authenticated";
-  const inputClass = `w-full rounded-md border border-input px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
-    isAuthenticated ? "bg-muted text-foreground cursor-not-allowed" : "bg-background"
-  }`;
-
-  // Calculate total patient owes for payment amount
-  const getPatientOwes = (): number => {
+  async function verifyAndLoad(token: string, isReturn: boolean) {
     try {
-      const result = estimateOop({
-        primaryInsurance: patient.primaryInsurance,
-        secondaryInsurance: patient.secondaryInsurance,
-        serving: patient.serving,
-        infusionSets: (parseInt(patient.qtyInf1) || 0) + (parseInt(patient.qtyInf2) || 0),
-        deductibleRemaining: patient.deductibleRemaining,
-        stediCoinsurance: patient.stediCoinsurance,
-        oopMaxRemaining: patient.oopMaxRemaining,
-      });
-      if ("ok" in result && result.ok) return result.patientOwes ?? 0;
-      return 0;
-    } catch {
-      return 0;
-    }
-  };
+      const verifyRes = await fetch(`${API_URL}/auth/verify/${token}`);
+      const verifyData = await verifyRes.json();
 
-  if (appState.mode === "loading") {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
-          <p className="text-sm text-muted-foreground">Loading your payment estimate...</p>
-        </div>
-      </div>
-    );
+      if (!verifyData.success) {
+        setAppState({ mode: "expired" });
+        return;
+      }
+
+      const jwt = verifyData.token;
+
+      const meRes = await fetch(`${API_URL}/api/me`, {
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+      const patientData: PatientData = await meRes.json();
+
+      if (isReturn || patientData.isPaid) {
+        setAppState({ mode: "success" });
+      }
+
+      // Always update to authenticated so we have data for receipt
+      setAppState({
+        mode: patientData.isPaid ? "success" : (isReturn ? "success" : "authenticated"),
+        jwt,
+        data: patientData,
+      } as any);
+    } catch {
+      setAppState({ mode: "error", message: "Unable to connect. Please try again later." });
+    }
   }
 
-  if (appState.mode === "expired") {
+  // ─── No token ───
+  if (appState.mode === "no-token") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="rounded-lg border bg-card p-8 max-w-md text-center space-y-3">
-          <h2 className="text-lg font-semibold text-foreground">Link Expired</h2>
+          <div className="text-3xl">&#128274;</div>
+          <h2 className="text-lg font-semibold text-foreground">Invalid Link</h2>
           <p className="text-sm text-muted-foreground">
-            This payment link has expired or is no longer valid. Please contact Medically Modern to request a new link.
+            This page requires a valid payment link. Please use the link sent to your phone.
           </p>
         </div>
       </div>
     );
   }
 
+  // ─── Loading ───
+  if (appState.mode === "loading") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
+          <p className="text-sm text-muted-foreground">Loading your payment details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Expired ───
+  if (appState.mode === "expired") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="rounded-lg border bg-card p-8 max-w-md text-center space-y-3">
+          <div className="text-3xl">&#128274;</div>
+          <h2 className="text-lg font-semibold text-foreground">Link Expired</h2>
+          <p className="text-sm text-muted-foreground">
+            This payment link has expired or is no longer valid. Please contact Mid-Island Medical to request a new one.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Error ───
   if (appState.mode === "error") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="rounded-lg border bg-card p-8 max-w-md text-center space-y-3">
+          <div className="text-3xl">&#9888;&#65039;</div>
           <h2 className="text-lg font-semibold text-foreground">Something went wrong</h2>
           <p className="text-sm text-muted-foreground">{appState.message}</p>
         </div>
@@ -147,156 +148,180 @@ export default function App() {
     );
   }
 
-  const patientOwes = isAuthenticated ? getPatientOwes() : 0;
+  // ─── Paying (redirect in progress) ───
+  if (appState.mode === "paying") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
+          <p className="text-sm text-muted-foreground">Redirecting to secure payment...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Success / Receipt ───
+  if (appState.mode === "success") {
+    const data = (appState as any).data as PatientData | undefined;
+    const jwt = (appState as any).jwt as string | undefined;
+
+    return (
+      <div className="min-h-screen bg-background">
+        <header className="border-b bg-card px-6 py-4">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+            Mid-Island Medical Supply
+          </h1>
+        </header>
+        <main className="max-w-lg mx-auto px-4 py-8">
+          <div className="rounded-lg border bg-card p-6 text-center space-y-4">
+            <div className="text-4xl">&#9989;</div>
+            <h2 className="text-xl font-semibold text-foreground">Payment Received</h2>
+            <p className="text-sm text-muted-foreground">
+              Thank you{data ? `, ${data.name}` : ""}! Your payment
+              {data ? ` of $${data.paidAmount.toFixed(2)}` : ""} has been received.
+            </p>
+            {data?.stripeChargeId && (
+              <p className="text-xs text-muted-foreground">
+                Confirmation: {data.stripeChargeId}
+              </p>
+            )}
+
+            {/* Receipt download */}
+            {jwt && (
+              <a
+                href={`${API_URL}/api/receipt`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  // Fetch with auth and trigger download
+                  fetch(`${API_URL}/api/receipt`, {
+                    headers: { Authorization: `Bearer ${jwt}` },
+                  })
+                    .then((r) => r.blob())
+                    .then((blob) => {
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `receipt-${data?.name?.replace(/\s+/g, "-") || "payment"}.pdf`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    });
+                }}
+                className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 cursor-pointer"
+              >
+                &#128196; Download Receipt (FSA/HSA)
+              </a>
+            )}
+
+            <p className="text-xs text-muted-foreground mt-4">
+              Stripe will also email a receipt to the card on file.
+            </p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // ─── Authenticated: show ERA breakdown + Pay button ───
+  const { jwt, data } = appState as { mode: "authenticated"; jwt: string; data: PatientData };
+
+  async function handlePay() {
+    setAppState({ mode: "paying" } as any);
+    try {
+      const res = await fetch(`${API_URL}/api/create-checkout-session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwt}`,
+        },
+      });
+      const result = await res.json();
+      if (result.checkoutUrl) {
+        window.location.href = result.checkoutUrl;
+      } else {
+        setAppState({ mode: "error", message: result.error || "Unable to start payment." });
+      }
+    } catch {
+      setAppState({ mode: "error", message: "Unable to connect to payment server." });
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card px-6 py-4">
         <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          Co-Insurance / OOP Payment Estimator
+          Mid-Island Medical Supply
         </h1>
-        {isAuthenticated ? (
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Estimate for <span className="font-medium text-foreground">{appState.name}</span>
-          </p>
-        ) : (
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Estimate patient out-of-pocket costs per fill
-          </p>
-        )}
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Payment for <span className="font-medium text-foreground">{data.name}</span>
+        </p>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-        <div className="rounded-lg border bg-card p-5 space-y-5">
+      <main className="max-w-lg mx-auto px-4 py-6 space-y-5">
+        {/* Claim Info */}
+        <div className="rounded-lg border bg-card p-5 space-y-3">
           <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-            {isAuthenticated ? "Your Insurance Details" : "Patient Insurance Details"}
+            Claim Details
           </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Primary Insurance</label>
-              {isAuthenticated ? (
-                <div className={inputClass}>{patient.primaryInsurance || "—"}</div>
-              ) : (
-                <select
-                  className={inputClass}
-                  value={patient.primaryInsurance}
-                  onChange={(e) => update("primaryInsurance", e.target.value)}
-                >
-                  <option value="">Select insurance...</option>
-                  {INSURANCE_OPTIONS.map((ins) => (
-                    <option key={ins} value={ins}>{ins}</option>
-                  ))}
-                </select>
-              )}
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <span className="text-muted-foreground">Date of Service</span>
+              <p className="font-medium text-foreground">{data.dos || "N/A"}</p>
             </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Secondary Insurance</label>
-              {isAuthenticated ? (
-                <div className={inputClass}>{patient.secondaryInsurance || "None"}</div>
-              ) : (
-                <input
-                  type="text"
-                  className={inputClass}
-                  placeholder="e.g. NY Medicaid, Medicare Supplement"
-                  value={patient.secondaryInsurance}
-                  onChange={(e) => update("secondaryInsurance", e.target.value)}
-                />
-              )}
+            <div>
+              <span className="text-muted-foreground">Primary Payor</span>
+              <p className="font-medium text-foreground">{data.primaryPayor || "N/A"}</p>
             </div>
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">Serving</label>
-              {isAuthenticated ? (
-                <div className={inputClass}>{patient.serving || "—"}</div>
-              ) : (
-                <select
-                  className={inputClass}
-                  value={patient.serving}
-                  onChange={(e) => update("serving", e.target.value)}
-                >
-                  <option value="">Select serving...</option>
-                  {SERVING_OPTIONS.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-              )}
-            </div>
-          </div>
-
-          <div className="border-t pt-4">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
-              Benefits (from Stedi)
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Deductible Remaining</label>
-                {isAuthenticated ? (
-                  <div className={inputClass}>{patient.deductibleRemaining || "—"}</div>
-                ) : (
-                  <input
-                    type="text"
-                    className={inputClass}
-                    placeholder="e.g. 1500"
-                    value={patient.deductibleRemaining}
-                    onChange={(e) => update("deductibleRemaining", e.target.value)}
-                  />
-                )}
+            {data.secondaryPayer && (
+              <div>
+                <span className="text-muted-foreground">Secondary Payor</span>
+                <p className="font-medium text-foreground">{data.secondaryPayer}</p>
               </div>
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">Coinsurance %</label>
-                {isAuthenticated ? (
-                  <div className={inputClass}>{patient.stediCoinsurance || "—"}</div>
-                ) : (
-                  <input
-                    type="text"
-                    className={inputClass}
-                    placeholder="e.g. 20"
-                    value={patient.stediCoinsurance}
-                    onChange={(e) => update("stediCoinsurance", e.target.value)}
-                  />
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-foreground">OOP Max Remaining</label>
-                {isAuthenticated ? (
-                  <div className={inputClass}>{patient.oopMaxRemaining || "—"}</div>
-                ) : (
-                  <input
-                    type="text"
-                    className={inputClass}
-                    placeholder="e.g. 5000"
-                    value={patient.oopMaxRemaining}
-                    onChange={(e) => update("oopMaxRemaining", e.target.value)}
-                  />
-                )}
-              </div>
-            </div>
+            )}
           </div>
         </div>
 
-        <OopEstimateCard patient={patient} />
+        {/* ERA Line Items */}
+        <div className="rounded-lg border bg-card p-5 space-y-3">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+            Your Share of Cost
+          </p>
 
-        {/* Payment section — only for authenticated patients with a calculable amount */}
-        {isAuthenticated && (
-          <div className="rounded-lg border bg-card p-5">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-4">
-              Payment
-            </p>
-            {patientOwes > 0 ? (
-              <PaymentForm jwt={appState.jwt} amount={patientOwes} />
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                {patientOwes === 0 && patient.stediCoinsurance
-                  ? "No payment is due at this time."
-                  : "Payment amount cannot be calculated until benefits data (coinsurance %, deductible, OOP max) is available. Please contact Medically Modern for assistance."}
-              </p>
-            )}
+          <div className="space-y-2">
+            {data.lineItems.map((li, i) => (
+              <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{li.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {li.hcpcCode}{li.modifiers ? ` ${li.modifiers}` : ""}
+                  </p>
+                </div>
+                <p className={`text-sm font-semibold ${li.patientOwes > 0 ? "text-foreground" : "text-muted-foreground"}`}>
+                  ${li.patientOwes.toFixed(2)}
+                </p>
+              </div>
+            ))}
           </div>
+
+          {/* Total */}
+          <div className="flex items-center justify-between pt-3 border-t-2 border-foreground/20">
+            <p className="text-base font-bold text-foreground">Total Due</p>
+            <p className="text-xl font-bold text-foreground">${data.totalPatientOwes.toFixed(2)}</p>
+          </div>
+        </div>
+
+        {/* Pay Button */}
+        {data.totalPatientOwes > 0 && (
+          <button
+            onClick={handlePay}
+            className="w-full rounded-md bg-primary py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            Pay ${data.totalPatientOwes.toFixed(2)}
+          </button>
         )}
+
+        <p className="text-xs text-center text-muted-foreground">
+          Secure payment powered by Stripe. HSA/FSA cards accepted.
+        </p>
       </main>
     </div>
   );

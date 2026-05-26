@@ -1,4 +1,4 @@
-const { SUBSCRIPTION_BOARD_ID, COLUMNS } = require("./config");
+const { SECONDARY_BOARD_ID, COLUMNS, SUBITEM_COLUMNS } = require("./config");
 
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
 const API_URL = "https://api.monday.com/v2";
@@ -56,182 +56,205 @@ const WRITE_MUTATION = `mutation ($boardId: ID!, $itemId: ID!, $columnId: String
 
 async function writeText(itemId, columnId, text) {
   await mondayQuery(WRITE_MUTATION, {
-    boardId: SUBSCRIPTION_BOARD_ID, itemId, columnId, value: JSON.stringify(text),
+    boardId: SECONDARY_BOARD_ID, itemId, columnId, value: JSON.stringify(text),
   });
 }
 
-async function writeStatusIndex(itemId, columnId, index) {
+async function writeDate(itemId, columnId, dateStr) {
+  // dateStr should be YYYY-MM-DD
   await mondayQuery(WRITE_MUTATION, {
-    boardId: SUBSCRIPTION_BOARD_ID, itemId, columnId, value: JSON.stringify({ index }),
+    boardId: SECONDARY_BOARD_ID, itemId, columnId, value: JSON.stringify({ date: dateStr }),
   });
 }
 
 async function writeNumber(itemId, columnId, num) {
   await mondayQuery(WRITE_MUTATION, {
-    boardId: SUBSCRIPTION_BOARD_ID, itemId, columnId,
+    boardId: SECONDARY_BOARD_ID, itemId, columnId,
     value: JSON.stringify(String(parseFloat(num) || 0)),
   });
 }
 
-// ─── Find patient by UID ───
+async function writeStatusLabel(itemId, columnId, label) {
+  await mondayQuery(WRITE_MUTATION, {
+    boardId: SECONDARY_BOARD_ID, itemId, columnId,
+    value: JSON.stringify({ label }),
+  });
+}
 
-async function findPatientByUid(uid) {
-  const safeBoard = validateNumericId(SUBSCRIPTION_BOARD_ID, "board ID");
-  const safeCol = validateColumnId(COLUMNS.PATIENT_UID);
+// ─── Get item by Monday item ID (with subitems for ERA line items) ───
+
+async function getItemById(itemId) {
+  const safeId = validateNumericId(itemId, "item ID");
+
+  // Build list of parent column IDs to fetch
+  const parentColIds = Object.values(COLUMNS)
+    .filter(id => id !== "name")
+    .map(id => `"${validateColumnId(id)}"`)
+    .join(", ");
+
+  // Build list of subitem column IDs to fetch
+  const subColIds = Object.values(SUBITEM_COLUMNS)
+    .map(id => `"${validateColumnId(id)}"`)
+    .join(", ");
+
+  const data = await mondayQuery(`{
+    items(ids: [${safeId}]) {
+      id name
+      group { id title }
+      column_values(ids: [${parentColIds}]) {
+        id text type
+        column { id title }
+      }
+      subitems {
+        id name
+        column_values(ids: [${subColIds}]) {
+          id text type
+          column { id title }
+        }
+      }
+    }
+  }`);
+
+  return data.items?.[0] || null;
+}
+
+// ─── Find item by pay link token (reverse lookup via column search) ───
+
+async function findItemByToken(token) {
+  const safeBoard = validateNumericId(SECONDARY_BOARD_ID, "board ID");
+  const safeCol = validateColumnId(COLUMNS.PAY_LINK_TOKEN);
 
   const data = await mondayQuery(`{
     items_page_by_column_values(
       board_id: ${safeBoard},
       limit: 1,
-      columns: [{column_id: "${safeCol}", column_values: ["${uid.replace(/"/g, "")}"]}]
+      columns: [{column_id: "${safeCol}", column_values: ["${token.replace(/"/g, "")}"]}]
     ) {
-      items {
-        id name group { id title }
-        column_values { id type text value }
-      }
+      items { id name }
     }
   }`);
 
   return data.items_page_by_column_values?.items?.[0] || null;
 }
 
-// ─── Find patient by phone ───
+// ─── Transform Monday item into patient-safe payment data ───
 
-async function findPatientByPhone(phone) {
-  const digits = phone.replace(/\D/g, "");
-  const safeBoard = validateNumericId(SUBSCRIPTION_BOARD_ID, "board ID");
-  const safePhoneCol = validateColumnId(COLUMNS.PHONE);
-
-  const data = await mondayQuery(`{
-    items_page_by_column_values(
-      board_id: ${safeBoard},
-      limit: 10,
-      columns: [{column_id: "${safePhoneCol}", column_values: ["${digits}"]}]
-    ) {
-      items {
-        id name group { id title }
-        column_values(ids: ["${safePhoneCol}", "${validateColumnId(COLUMNS.PATIENT_UID)}"]) {
-          id text value
-        }
-      }
-    }
-  }`);
-
-  const items = data.items_page_by_column_values?.items || [];
-  if (items.length === 0) return null;
-
-  const match = items.find((item) => {
-    const uidCol = item.column_values.find((c) => c.id === COLUMNS.PATIENT_UID);
-    return uidCol?.text;
-  }) || items[0];
-
-  const uidCol = match.column_values.find((c) => c.id === COLUMNS.PATIENT_UID);
-  const phoneCol = match.column_values.find((c) => c.id === COLUMNS.PHONE);
-
-  return {
-    itemId: match.id,
-    name: match.name,
-    uid: uidCol?.text || null,
-    phone: phoneCol?.text || digits,
-  };
-}
-
-// ─── Get patient OOP data for the payment form ───
-
-async function getPatientPaymentData(uid) {
-  const item = await findPatientByUid(uid);
-  if (!item) return null;
-
+function transformToPaymentData(item) {
   const col = (id) => {
     const c = item.column_values.find((cv) => cv.id === id);
     return c?.text || "";
   };
 
-  const isServing = (val) => val && val !== "Not Serving" && val.trim() !== "";
+  // Parse subitems into ERA line items
+  const lineItems = (item.subitems || []).map((sub) => {
+    const subCol = (id) => {
+      const c = sub.column_values.find((cv) => cv.id === id);
+      return c?.text || "";
+    };
 
-  // Derive "serving" from subscription + what products are active
-  const subscription = col(COLUMNS.SUBSCRIPTION);
-  const sensorsType = col(COLUMNS.SENSORS_TYPE);
-  const suppliesType = col(COLUMNS.SUPPLIES_TYPE);
+    const coinsurance = parseFloat(subCol(SUBITEM_COLUMNS.COINSURANCE_AMOUNT)) || 0;
+    const deductible = parseFloat(subCol(SUBITEM_COLUMNS.DEDUCTIBLE_AMOUNT)) || 0;
 
-  const hasCgm = isServing(sensorsType);
-  const hasPump = isServing(suppliesType);
+    return {
+      name: sub.name,
+      hcpcCode: subCol(SUBITEM_COLUMNS.HCPC_CODE),
+      modifiers: subCol(SUBITEM_COLUMNS.MODIFIERS),
+      coinsuranceAmount: coinsurance,
+      deductibleAmount: deductible,
+      patientOwes: coinsurance + deductible,
+      secondaryPaidLine: parseFloat(subCol(SUBITEM_COLUMNS.SECONDARY_PAID_LINE)) || 0,
+      quantity: subCol(SUBITEM_COLUMNS.CLAIM_QUANTITY) || subCol(SUBITEM_COLUMNS.ORDER_QUANTITY),
+    };
+  });
 
-  let serving = "";
-  if (hasCgm && hasPump) serving = "Supplies + CGM";
-  else if (hasCgm) serving = "CGM";
-  else if (hasPump) serving = "Supplies Only";
+  // Total patient owes = sum of coinsurance + deductible across line items
+  const totalPatientOwes = lineItems.reduce((sum, li) => sum + li.patientOwes, 0);
+
+  // Check if already paid
+  const stripeChargeId = col(COLUMNS.STRIPE_CHARGE_ID);
+  const paidAmount = parseFloat(col(COLUMNS.PATIENT_PAID_AMOUNT)) || 0;
+  const isPaid = !!stripeChargeId || paidAmount > 0;
 
   return {
     itemId: item.id,
     name: item.name,
+    dob: col(COLUMNS.DOB),
+    dos: col(COLUMNS.DOS),
+    phone: col(COLUMNS.PHONE),
 
-    // Insurance (for OOP estimator)
-    primaryInsurance: col(COLUMNS.PRIMARY_INS),
-    secondaryInsurance: col(COLUMNS.SECONDARY_INS),
+    // Insurance
+    primaryPayor: col(COLUMNS.PRIMARY_PAYOR),
+    primaryMemberId: col(COLUMNS.PRIMARY_MEMBER_ID),
+    secondaryPayer: col(COLUMNS.SECONDARY_PAYER),
+    secondaryMemberId: col(COLUMNS.SECONDARY_MEMBER_ID),
 
-    // Product info (for OOP estimator)
-    serving,
-    subscription,
-    sensorsType: hasCgm ? sensorsType : null,
-    suppliesType: hasPump ? suppliesType : null,
-    infusionSet1: isServing(col(COLUMNS.INFUSION_SET_1)) ? col(COLUMNS.INFUSION_SET_1) : null,
-    qtyInf1: col(COLUMNS.INF_QTY_1) || "0",
-    infusionSet2: isServing(col(COLUMNS.INFUSION_SET_2)) ? col(COLUMNS.INFUSION_SET_2) : null,
-    qtyInf2: col(COLUMNS.INF_QTY_2) || "0",
+    // ERA summary
+    primaryPaidAmount: parseFloat(col(COLUMNS.PRIMARY_PAID_AMOUNT)) || 0,
+    primaryPrAmount: parseFloat(col(COLUMNS.PRIMARY_PR_AMOUNT)) || 0,
+    secondaryPaid: parseFloat(col(COLUMNS.SECONDARY_PAID)) || 0,
+    secondaryPaidDate: col(COLUMNS.SECONDARY_PAID_DATE),
 
-    // Benefits / Stedi (for OOP estimator)
-    deductible: col(COLUMNS.DEDUCTIBLE),
-    deductibleRemaining: col(COLUMNS.DEDUCTIBLE_REMAINING),
-    stediCoinsurance: col(COLUMNS.STEDI_COINSURANCE),
-    oopMax: col(COLUMNS.OOP_MAX),
-    oopMaxRemaining: col(COLUMNS.OOP_MAX_REMAINING),
+    // Line items (ERA breakdown)
+    lineItems,
+    totalPatientOwes,
 
-    // Referral source (needed for CareCentrix check)
-    referralSource: "",
+    // Payment state
+    isPaid,
+    paidAmount,
+    paidDate: col(COLUMNS.PATIENT_PAID_DATE),
+    stripeChargeId,
+
+    // Status
+    secondaryStatus: col(COLUMNS.SECONDARY_STATUS),
+    submissionType: col(COLUMNS.SUBMISSION_TYPE),
   };
 }
 
-// ─── Store payment token + link in Monday ───
+// ─── Get patient payment data by Monday item ID ───
 
-async function storePaymentLinkInMonday(uid, token, link) {
-  const item = await findPatientByUid(uid);
-  if (!item) throw new Error("Patient not found");
-  const itemId = validateNumericId(item.id, "item ID");
-
-  await Promise.all([
-    writeText(itemId, COLUMNS.PAYMENT_TOKEN, token),
-    writeText(itemId, COLUMNS.PAYMENT_LINK, link),
-  ]);
-
-  console.log(`[monday] Payment link stored for UID ${uid}`);
+async function getPatientPaymentData(itemId) {
+  const item = await getItemById(itemId);
+  if (!item) return null;
+  return transformToPaymentData(item);
 }
 
-// ─── Record payment in Monday (future — for Stripe webhook) ───
+// ─── Store payment link in Monday ───
 
-async function recordPaymentInMonday(uid, { amount, stripeId, status = "Paid" }) {
-  const item = await findPatientByUid(uid);
-  if (!item) throw new Error("Patient not found");
-  const itemId = validateNumericId(item.id, "item ID");
+async function storePaymentLinkInMonday(itemId, token, link) {
+  const safeId = validateNumericId(itemId, "item ID");
+  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
 
-  const writes = [
-    writeText(itemId, COLUMNS.PAYMENT_TIMESTAMP, new Date().toISOString()),
-  ];
+  await Promise.all([
+    writeText(safeId, COLUMNS.PAY_LINK_TOKEN, token),
+    writeText(safeId, COLUMNS.PAY_LINK_URL, link),
+    writeDate(safeId, COLUMNS.PAY_LINK_SENT_DATE, today),
+    writeStatusLabel(safeId, COLUMNS.SECONDARY_STATUS, "Sent to Patient"),
+  ]);
 
-  // Write payment data to Monday columns
+  console.log(`[monday] Payment link stored for item ${itemId}`);
+}
 
-  if (amount) writes.push(writeNumber(itemId, COLUMNS.PAYMENT_AMOUNT, amount));
-  if (stripeId) writes.push(writeText(itemId, COLUMNS.PAYMENT_STRIPE_ID, stripeId));
-  writes.push(writeStatusIndex(itemId, COLUMNS.PAYMENT_STATUS, status === "Paid" ? 0 : 1));
+// ─── Record payment in Monday (from Stripe webhook) ───
 
-  await Promise.all(writes);
-  console.log(`[monday] Payment recorded for UID ${uid}: $${amount}, stripe=${stripeId}`);
+async function recordPaymentInMonday(itemId, { amount, stripeChargeId }) {
+  const safeId = validateNumericId(itemId, "item ID");
+  const today = new Date().toISOString().split("T")[0];
+
+  await Promise.all([
+    writeNumber(safeId, COLUMNS.PATIENT_PAID_AMOUNT, amount),
+    writeDate(safeId, COLUMNS.PATIENT_PAID_DATE, today),
+    writeText(safeId, COLUMNS.STRIPE_CHARGE_ID, stripeChargeId),
+    writeStatusLabel(safeId, COLUMNS.SECONDARY_STATUS, "Review"),
+  ]);
+
+  console.log(`[monday] Payment recorded for item ${itemId}: $${amount}, charge=${stripeChargeId}`);
 }
 
 module.exports = {
-  findPatientByUid,
-  findPatientByPhone,
+  getItemById,
+  findItemByToken,
   getPatientPaymentData,
+  transformToPaymentData,
   storePaymentLinkInMonday,
   recordPaymentInMonday,
 };

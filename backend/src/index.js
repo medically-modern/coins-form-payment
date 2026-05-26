@@ -4,9 +4,11 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const { RedisStore } = require("rate-limit-redis");
 const cookieParser = require("cookie-parser");
+const PDFDocument = require("pdfkit");
 const { verifyPaymentToken, generatePaymentToken, requireAuth, logout, COOKIE_OPTIONS } = require("./auth");
-const { getPatientPaymentData, findPatientByPhone, storePaymentLinkInMonday, recordPaymentInMonday } = require("./monday");
-const { redis, healthCheck } = require("./redis");
+const { getPatientPaymentData, storePaymentLinkInMonday, recordPaymentInMonday } = require("./monday");
+const { redis, healthCheck, getPaymentToken, markTokenPaid, isChargeProcessed, markChargeProcessed, logEvent } = require("./redis");
+const { COMPANY } = require("./config");
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
@@ -43,7 +45,11 @@ app.use(cors({
   credentials: true,
 }));
 
-// ─── Stripe webhook needs raw body — MUST be before express.json() ───
+// ═══════════════════════════════════════════════════════
+// STRIPE WEBHOOK — raw body, BEFORE express.json()
+// Handles: checkout.session.completed (Stripe Checkout)
+// ═══════════════════════════════════════════════════════
+
 app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (req, res) => {
   const sig = req.headers["stripe-signature"];
   const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -53,9 +59,8 @@ app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (re
     if (endpointSecret && sig) {
       event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
     } else {
-      // In test mode without webhook secret, parse directly
       event = JSON.parse(req.body.toString());
-      console.log("[stripe] WARNING: No webhook secret configured — skipping signature verification");
+      console.log("[stripe] WARNING: No webhook secret — skipping signature verification");
     }
   } catch (err) {
     console.error("[stripe] Webhook signature verification failed:", err.message);
@@ -64,40 +69,63 @@ app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (re
 
   console.log(`[stripe] Event received: ${event.type}`);
 
-  if (event.type === "payment_intent.succeeded") {
-    const pi = event.data.object;
-    const uid = pi.metadata?.uid;
-    const amount = pi.amount / 100; // cents to dollars
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object;
+    const itemId = session.metadata?.itemId;
+    const paymentToken = session.metadata?.paymentToken;
+    const chargeId = session.payment_intent; // PaymentIntent ID serves as charge ID
 
-    if (uid) {
-      try {
-        await recordPaymentInMonday(uid, {
-          amount,
-          stripeId: pi.id,
-          status: "Paid",
-        });
-        console.log(`[stripe] Payment recorded for UID ${uid}: $${amount}`);
-      } catch (err) {
-        console.error("[stripe] Error recording payment in Monday:", err.message);
+    if (!itemId) {
+      console.warn("[stripe] checkout.session.completed but no itemId in metadata:", session.id);
+      return res.json({ received: true });
+    }
+
+    // ─── Idempotency guard ───
+    if (chargeId) {
+      const alreadyProcessed = await isChargeProcessed(chargeId);
+      if (alreadyProcessed) {
+        console.log(`[stripe] Duplicate webhook for charge ${chargeId} — skipping`);
+        return res.json({ received: true, duplicate: true });
       }
-    } else {
-      console.warn("[stripe] Payment succeeded but no UID in metadata:", pi.id);
+    }
+
+    const amountPaid = (session.amount_total || 0) / 100; // cents → dollars
+
+    try {
+      // Write to Monday: amount, date, charge ID, status → "Review"
+      await recordPaymentInMonday(itemId, {
+        amount: amountPaid,
+        stripeChargeId: chargeId || session.id,
+      });
+
+      // Mark token as paid in Redis
+      if (paymentToken) {
+        await markTokenPaid(paymentToken, {
+          stripeSessionId: session.id,
+          stripeChargeId: chargeId,
+          paidAmount: amountPaid,
+        });
+      }
+
+      // Mark charge as processed (idempotency)
+      if (chargeId) {
+        await markChargeProcessed(chargeId, itemId);
+      }
+
+      console.log(`[stripe] Payment recorded for item ${itemId}: $${amountPaid}`);
+    } catch (err) {
+      console.error("[stripe] Error recording payment:", err.message);
+      // Return 500 so Stripe retries
+      return res.status(500).json({ error: "Failed to record payment" });
     }
   }
 
+  // Also handle payment_intent.payment_failed for logging
   if (event.type === "payment_intent.payment_failed") {
     const pi = event.data.object;
-    const uid = pi.metadata?.uid;
-    if (uid) {
-      try {
-        await recordPaymentInMonday(uid, {
-          amount: pi.amount / 100,
-          stripeId: pi.id,
-          status: "Failed",
-        });
-      } catch (err) {
-        console.error("[stripe] Error recording failed payment:", err.message);
-      }
+    const itemId = pi.metadata?.itemId;
+    if (itemId) {
+      console.warn(`[stripe] Payment failed for item ${itemId}: ${pi.last_payment_error?.message}`);
     }
   }
 
@@ -121,7 +149,7 @@ app.get("/health", async (req, res) => {
   const redisOk = await healthCheck();
   res.json({
     status: "ok",
-    service: "coins-form-payment",
+    service: "pay-secondary",
     redis: redisOk ? "connected" : "disconnected",
     stripe: !!process.env.STRIPE_SECRET_KEY,
     timestamp: new Date().toISOString(),
@@ -140,7 +168,7 @@ app.get("/auth/verify/:token", authLimiter, async (req, res) => {
       return res.status(result.status).json({ error: result.error });
     }
     res.cookie("session", result.jwt, COOKIE_OPTIONS);
-    res.json({ success: true, uid: result.uid, token: result.jwt });
+    res.json({ success: true, itemId: result.itemId, token: result.jwt, isPaid: result.isPaid });
   } catch (err) {
     console.error("[auth] Error verifying payment token:", err.message);
     res.status(500).json({ error: "Something went wrong. Please try again." });
@@ -148,7 +176,7 @@ app.get("/auth/verify/:token", authLimiter, async (req, res) => {
 });
 
 app.get("/auth/check", requireAuth, (req, res) => {
-  res.json({ authenticated: true, uid: req.uid });
+  res.json({ authenticated: true, itemId: req.itemId });
 });
 
 app.post("/auth/logout", requireAuth, async (req, res) => {
@@ -169,9 +197,11 @@ app.post("/auth/logout", requireAuth, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════
-// ADMIN ROUTE
+// ADMIN ROUTES
 // ═══════════════════════════════════════════════════════
 
+// POST /admin/generate-token — Create payment link for a Monday item
+// Accepts: { itemId } (Monday item ID from Secondary Claims Board)
 app.post("/admin/generate-token", async (req, res) => {
   try {
     const apiKey = req.headers["x-api-key"];
@@ -179,28 +209,42 @@ app.post("/admin/generate-token", async (req, res) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const { phone, uid } = req.body;
-    if (!phone && !uid) {
-      return res.status(400).json({ error: "Phone or UID required" });
+    const { itemId } = req.body;
+    if (!itemId) {
+      return res.status(400).json({ error: "itemId required (Monday item ID from Secondary Claims Board)" });
     }
 
-    let patientUid = uid;
-    if (phone && !uid) {
-      const patient = await findPatientByPhone(phone);
-      if (!patient || !patient.uid) {
-        return res.status(404).json({ error: "Patient not found" });
-      }
-      patientUid = patient.uid;
+    // Verify item exists and get patient data
+    const patientData = await getPatientPaymentData(String(itemId));
+    if (!patientData) {
+      return res.status(404).json({ error: "Item not found on Secondary Claims Board" });
     }
 
-    const token = await generatePaymentToken(patientUid);
+    if (patientData.totalPatientOwes <= 0) {
+      return res.status(400).json({
+        error: "No patient balance found",
+        detail: "Subitems show $0 owed. Check that ERA line items have coinsurance/deductible amounts.",
+      });
+    }
+
+    // Generate token (idempotent — returns existing if present)
+    const token = await generatePaymentToken(String(itemId));
     const paymentUrl = process.env.PAYMENT_URL || "https://medically-modern.github.io/coins-form-payment";
     const link = `${paymentUrl}?token=${token}`;
 
-    await storePaymentLinkInMonday(patientUid, token, link);
-    console.log(`[admin] Payment token generated for UID ${patientUid}`);
+    // Write token + link + sent date to Monday + set status
+    await storePaymentLinkInMonday(String(itemId), token, link);
+    console.log(`[admin] Payment token generated for item ${itemId} (${patientData.name})`);
 
-    res.json({ success: true, uid: patientUid, link, token, expiresIn: "30 days" });
+    res.json({
+      success: true,
+      itemId: String(itemId),
+      patientName: patientData.name,
+      totalOwed: patientData.totalPatientOwes,
+      link,
+      token,
+      expiresIn: "30 days",
+    });
   } catch (err) {
     console.error("[admin] Error generating token:", err.message, err.stack);
     res.status(500).json({ error: "Failed to generate payment token" });
@@ -211,12 +255,14 @@ app.post("/admin/generate-token", async (req, res) => {
 // PATIENT API ROUTES (all require auth)
 // ═══════════════════════════════════════════════════════
 
+// GET /api/me — Patient-safe payment data (ERA breakdown + amounts)
 app.get("/api/me", apiLimiter, requireAuth, async (req, res) => {
   try {
-    const data = await getPatientPaymentData(req.uid);
+    const data = await getPatientPaymentData(req.itemId);
     if (!data) {
       return res.status(404).json({ error: "Patient not found" });
     }
+    // Strip internal fields
     const { itemId, ...safeData } = data;
     res.json(safeData);
   } catch (err) {
@@ -225,48 +271,165 @@ app.get("/api/me", apiLimiter, requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/stripe-config — Return publishable key to frontend
-app.get("/api/stripe-config", apiLimiter, requireAuth, (req, res) => {
-  res.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY });
-});
-
-// POST /api/create-payment-intent — Create Stripe PaymentIntent
-app.post("/api/create-payment-intent", apiLimiter, requireAuth, async (req, res) => {
+// POST /api/create-checkout-session — Stripe Checkout (hosted)
+app.post("/api/create-checkout-session", apiLimiter, requireAuth, async (req, res) => {
   try {
-    const { amount } = req.body; // amount in dollars
-    if (!amount || amount <= 0 || amount > 50000) {
-      return res.status(400).json({ error: "Invalid amount" });
+    const data = await getPatientPaymentData(req.itemId);
+    if (!data) {
+      return res.status(404).json({ error: "Patient not found" });
     }
 
-    const amountCents = Math.round(amount * 100);
+    if (data.isPaid) {
+      return res.status(400).json({ error: "This balance has already been paid." });
+    }
 
-    // Get patient name for Stripe metadata
-    const patientData = await getPatientPaymentData(req.uid);
-    const patientName = patientData?.name || "Unknown";
+    if (data.totalPatientOwes <= 0) {
+      return res.status(400).json({ error: "No balance owed." });
+    }
 
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amountCents,
-      currency: "usd",
+    const amountCents = Math.round(data.totalPatientOwes * 100);
+    const paymentUrl = process.env.PAYMENT_URL || "https://medically-modern.github.io/coins-form-payment";
+
+    // Build line item description from ERA
+    const description = data.lineItems
+      .filter(li => li.patientOwes > 0)
+      .map(li => `${li.name} (${li.hcpcCode}) — $${li.patientOwes.toFixed(2)}`)
+      .join(", ");
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      mode: "payment",
+      line_items: [{
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: `DME Co-Insurance — ${data.name}`,
+            description: description || `DOS: ${data.dos}`,
+          },
+          unit_amount: amountCents,
+        },
+        quantity: 1,
+      }],
       metadata: {
-        uid: req.uid,
-        patientName,
-        service: "coins-form-payment",
+        itemId: req.itemId,
+        paymentToken: req.paymentToken,
+        patientName: data.name,
+        dos: data.dos,
+        service: "pay-secondary",
       },
-      description: `Co-insurance payment for ${patientName}`,
-      automatic_payment_methods: { enabled: true },
+      payment_intent_data: {
+        metadata: {
+          itemId: req.itemId,
+          patientName: data.name,
+          service: "pay-secondary",
+        },
+        statement_descriptor: "MID-ISLAND MEDICAL",
+      },
+      customer_email: undefined, // Patient pays via text link, no email required
+      success_url: `${paymentUrl}?token=${req.paymentToken}&status=success`,
+      cancel_url: `${paymentUrl}?token=${req.paymentToken}`,
     });
 
-    console.log(`[stripe] PaymentIntent created for UID ${req.uid}: $${amount} (${paymentIntent.id})`);
+    await logEvent(req.paymentToken, "checkout_session_created", {
+      sessionId: session.id,
+      amount: data.totalPatientOwes,
+    });
 
-    res.json({ clientSecret: paymentIntent.client_secret });
+    console.log(`[stripe] Checkout session created for item ${req.itemId}: $${data.totalPatientOwes} (${session.id})`);
+
+    res.json({ checkoutUrl: session.url, sessionId: session.id });
   } catch (err) {
-    console.error("[stripe] Error creating PaymentIntent:", err.message);
+    console.error("[stripe] Error creating checkout session:", err.message);
     res.status(500).json({ error: "Unable to initiate payment. Please try again." });
   }
+});
+
+// GET /api/receipt — Generate FSA/HSA-suitable PDF receipt
+app.get("/api/receipt", apiLimiter, requireAuth, async (req, res) => {
+  try {
+    const data = await getPatientPaymentData(req.itemId);
+    if (!data) {
+      return res.status(404).json({ error: "Patient not found" });
+    }
+
+    if (!data.isPaid) {
+      return res.status(400).json({ error: "No payment has been recorded for this balance." });
+    }
+
+    // Generate PDF
+    const doc = new PDFDocument({ size: "LETTER", margin: 50 });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="receipt-${data.name.replace(/\s+/g, "-")}-${data.dos || "payment"}.pdf"`);
+    doc.pipe(res);
+
+    // Header
+    doc.fontSize(14).font("Helvetica-Bold").text(COMPANY.name, { align: "center" });
+    doc.fontSize(10).font("Helvetica").text(COMPANY.address, { align: "center" });
+    doc.text(`NPI: ${COMPANY.npi}  ·  Tax ID: ${COMPANY.taxId}`, { align: "center" });
+    doc.moveDown(1.5);
+
+    // Title
+    doc.fontSize(16).font("Helvetica-Bold").text("PATIENT RECEIPT", { align: "center" });
+    doc.moveDown(1);
+
+    // Patient info
+    doc.fontSize(11).font("Helvetica");
+    doc.text(`Patient: ${data.name}`);
+    doc.text(`Date of Service: ${data.dos || "N/A"}`);
+    doc.text(`Date Paid: ${data.paidDate || new Date().toISOString().split("T")[0]}`);
+    doc.text(`Stripe Confirmation: ${data.stripeChargeId || "N/A"}`);
+    if (data.primaryPayor) doc.text(`Primary Payor: ${data.primaryPayor}`);
+    if (data.secondaryPayer) doc.text(`Secondary Payor: ${data.secondaryPayer}`);
+    doc.moveDown(1);
+
+    // Divider
+    doc.moveTo(50, doc.y).lineTo(562, doc.y).stroke();
+    doc.moveDown(0.5);
+
+    // Line items
+    doc.fontSize(12).font("Helvetica-Bold").text("ITEMIZED CHARGES (your share):");
+    doc.moveDown(0.5);
+
+    doc.fontSize(10).font("Helvetica");
+    for (const li of data.lineItems) {
+      const modStr = li.modifiers ? ` ${li.modifiers}` : "";
+      const oweStr = li.patientOwes > 0 ? `$${li.patientOwes.toFixed(2)}` : "$0.00";
+      doc.text(`  ${li.name} (${li.hcpcCode}${modStr})`, 60, doc.y, { continued: true, width: 350 });
+      doc.text(oweStr, { align: "right" });
+    }
+    doc.moveDown(0.5);
+
+    // Divider
+    doc.moveTo(50, doc.y).lineTo(562, doc.y).stroke();
+    doc.moveDown(0.5);
+
+    // Total
+    doc.fontSize(12).font("Helvetica-Bold");
+    doc.text(`  TOTAL PAID`, 60, doc.y, { continued: true, width: 350 });
+    doc.text(`$${data.paidAmount.toFixed(2)}`, { align: "right" });
+    doc.moveDown(1.5);
+
+    // FSA/HSA notice
+    doc.fontSize(9).font("Helvetica-Oblique")
+      .text("This receipt is suitable for FSA / HSA reimbursement under IRS 213(d).", { align: "center" });
+    doc.moveDown(0.5);
+    doc.text(`Generated: ${new Date().toISOString()}`, { align: "center" });
+
+    doc.end();
+  } catch (err) {
+    console.error("[receipt] Error generating PDF:", err.message);
+    res.status(500).json({ error: "Unable to generate receipt." });
+  }
+});
+
+// ─── Backward-compat: keep old stripe-config + create-payment-intent for any in-flight sessions ───
+app.get("/api/stripe-config", apiLimiter, requireAuth, (req, res) => {
+  res.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY });
 });
 
 // ─── Start server ───
 const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => {
-  console.log(`[payment-api] Co-insurance payment API running on port ${PORT}`);
+  console.log(`[pay-secondary] Payment API running on port ${PORT}`);
 });
