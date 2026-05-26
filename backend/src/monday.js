@@ -218,11 +218,11 @@ async function recordPaymentInMonday(uid, { amount, stripeId, status = "Paid" })
     writeText(itemId, COLUMNS.PAYMENT_TIMESTAMP, new Date().toISOString()),
   ];
 
-  // These columns need to be created on the board first
-  // Uncomment once columns exist:
-  // if (amount) writes.push(writeNumber(itemId, COLUMNS.PAYMENT_AMOUNT, amount));
-  // if (stripeId) writes.push(writeText(itemId, COLUMNS.PAYMENT_STRIPE_ID, stripeId));
-  // writes.push(writeStatusIndex(itemId, COLUMNS.PAYMENT_STATUS, status === "Paid" ? 0 : 1));
+  // Write payment data to Monday columns
+
+  if (amount) writes.push(writeNumber(itemId, COLUMNS.PAYMENT_AMOUNT, amount));
+  if (stripeId) writes.push(writeText(itemId, COLUMNS.PAYMENT_STRIPE_ID, stripeId));
+  writes.push(writeStatusIndex(itemId, COLUMNS.PAYMENT_STATUS, status === "Paid" ? 0 : 1));
 
   await Promise.all(writes);
   console.log(`[monday] Payment recorded for UID ${uid}: $${amount}, stripe=${stripeId}`);

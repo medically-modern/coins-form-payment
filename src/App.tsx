@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { OopEstimateCard } from "@/components/OopEstimateCard";
-import { PAYER_RATE_SCHEDULE } from "@/lib/oopEstimator";
+import { PaymentForm } from "@/components/PaymentForm";
+import { PAYER_RATE_SCHEDULE, estimateOop } from "@/lib/oopEstimator";
 import type { Patient } from "@/lib/types";
 
 const API_URL = import.meta.env.VITE_API_URL || "https://coins-form-payment-production.up.railway.app";
@@ -92,6 +93,25 @@ export default function App() {
     isAuthenticated ? "bg-muted text-foreground cursor-not-allowed" : "bg-background"
   }`;
 
+  // Calculate total patient owes for payment amount
+  const getPatientOwes = (): number => {
+    try {
+      const result = estimateOop({
+        primaryInsurance: patient.primaryInsurance,
+        secondaryInsurance: patient.secondaryInsurance,
+        serving: patient.serving,
+        infusionSets: (parseInt(patient.qtyInf1) || 0) + (parseInt(patient.qtyInf2) || 0),
+        deductibleRemaining: patient.deductibleRemaining,
+        stediCoinsurance: patient.stediCoinsurance,
+        oopMaxRemaining: patient.oopMaxRemaining,
+      });
+      if ("ok" in result && result.ok) return result.patientOwes ?? 0;
+      return 0;
+    } catch {
+      return 0;
+    }
+  };
+
   if (appState.mode === "loading") {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -126,6 +146,8 @@ export default function App() {
       </div>
     );
   }
+
+  const patientOwes = isAuthenticated ? getPatientOwes() : 0;
 
   return (
     <div className="min-h-screen bg-background">
@@ -258,14 +280,21 @@ export default function App() {
 
         <OopEstimateCard patient={patient} />
 
+        {/* Payment section — only for authenticated patients with a calculable amount */}
         {isAuthenticated && (
           <div className="rounded-lg border bg-card p-5">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-3">
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-4">
               Payment
             </p>
-            <p className="text-sm text-muted-foreground">
-              Payment processing will be available soon. Please contact Medically Modern for payment arrangements.
-            </p>
+            {patientOwes > 0 ? (
+              <PaymentForm jwt={appState.jwt} amount={patientOwes} />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {patientOwes === 0 && patient.stediCoinsurance
+                  ? "No payment is due at this time."
+                  : "Payment amount cannot be calculated until benefits data (coinsurance %, deductible, OOP max) is available. Please contact Medically Modern for assistance."}
+              </p>
+            )}
           </div>
         )}
       </main>
