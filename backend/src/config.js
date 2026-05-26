@@ -35,12 +35,12 @@ const COLUMNS = {
   OOP_MAX_REMAINING:      "text_mm3gs345",
 
   // ─── PAYMENT-SPECIFIC COLUMNS (new — must be created on the board) ───
-  PAYMENT_TOKEN:          "text_payment_token",       // Text — payment token
-  PAYMENT_LINK:           "text_payment_link",        // Text — payment link URL
-  PAYMENT_STATUS:         "color_payment_status",     // Status — Pending / Paid / Failed
-  PAYMENT_AMOUNT:         "numeric_payment_amount",   // Number — amount paid
-  PAYMENT_TIMESTAMP:      "text_payment_timestamp",   // Text — ISO timestamp of payment
-  PAYMENT_STRIPE_ID:      "text_payment_stripe_id",   // Text — Stripe payment intent ID (future)
+  PAYMENT_TOKEN:          "text_mm3qh3j2",       // Text — payment token
+  PAYMENT_LINK:           "text_mm3q9c6e",        // Text — payment link URL
+  PAYMENT_STATUS:         "color_mm3qv2xb",     // Status — Pending / Paid / Failed
+  PAYMENT_AMOUNT:         "numeric_mm3qx60f",   // Number — amount paid
+  PAYMENT_TIMESTAMP:      "text_mm3qwaj4",   // Text — ISO timestamp of payment
+  PAYMENT_STRIPE_ID:      "text_mm3q65b7",   // Text — Stripe payment intent ID (future)
 };
 
 // Auth configuration
