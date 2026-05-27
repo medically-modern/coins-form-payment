@@ -356,6 +356,28 @@ app.get("/api/receipt", apiLimiter, requireAuth, async (req, res) => {
       return res.status(400).json({ error: "No payment has been recorded for this balance." });
     }
 
+    // Fetch payment method details from Stripe
+    let paymentMethodSummary = "Card";
+    try {
+      if (data.stripeChargeId && data.stripeChargeId.startsWith("pi_")) {
+        const pi = await stripe.paymentIntents.retrieve(data.stripeChargeId, {
+          expand: ["payment_method"],
+        });
+        if (pi.payment_method?.card) {
+          const card = pi.payment_method.card;
+          const brand = (card.brand || "Card").charAt(0).toUpperCase() + (card.brand || "card").slice(1);
+          paymentMethodSummary = `${brand} ending in ${card.last4}`;
+        }
+      }
+    } catch (stripeErr) {
+      console.warn("[receipt] Could not fetch payment method from Stripe:", stripeErr.message);
+    }
+
+    // Generate receipt number: REC-<itemId last 6>-<date YYMMDD>
+    const paidDateStr = data.paidDate || new Date().toISOString().split("T")[0];
+    const dateCompact = paidDateStr.replace(/-/g, "").slice(2); // YYMMDD
+    const receiptNumber = `REC-${String(req.itemId).slice(-6)}-${dateCompact}`;
+
     // Generate PDF
     const doc = new PDFDocument({ size: "LETTER", margin: 50 });
 
@@ -363,58 +385,102 @@ app.get("/api/receipt", apiLimiter, requireAuth, async (req, res) => {
     res.setHeader("Content-Disposition", `attachment; filename="receipt-${data.name.replace(/\s+/g, "-")}-${data.dos || "payment"}.pdf"`);
     doc.pipe(res);
 
-    // Header
-    doc.fontSize(14).font("Helvetica-Bold").text(COMPANY.name, { align: "center" });
+    // ─── Company Header ───
+    doc.fontSize(15).font("Helvetica-Bold").text(COMPANY.name, { align: "center" });
     doc.fontSize(10).font("Helvetica").text(COMPANY.address, { align: "center" });
-    doc.text(`NPI: ${COMPANY.npi}  ·  Tax ID: ${COMPANY.taxId}`, { align: "center" });
+    doc.text(`NPI: ${COMPANY.npi}  \u00b7  Tax ID: ${COMPANY.taxId}`, { align: "center" });
     doc.moveDown(1.5);
 
-    // Title
-    doc.fontSize(16).font("Helvetica-Bold").text("PATIENT RECEIPT", { align: "center" });
+    // ─── Title + Receipt Number ───
+    doc.fontSize(18).font("Helvetica-Bold").text("PATIENT RECEIPT", { align: "center" });
+    doc.fontSize(10).font("Helvetica").text(`Receipt #: ${receiptNumber}`, { align: "center" });
+    doc.moveDown(1.5);
+
+    // ─── Patient & Claim Info (two-column layout) ───
+    const infoTop = doc.y;
+    const leftCol = 60;
+    const rightCol = 320;
+
+    doc.fontSize(10).font("Helvetica-Bold").text("Patient:", leftCol, infoTop);
+    doc.font("Helvetica").text(data.name, leftCol + 55, infoTop);
+
+    doc.font("Helvetica-Bold").text("Date of Service:", leftCol, infoTop + 18);
+    doc.font("Helvetica").text(data.dos || "N/A", leftCol + 100, infoTop + 18);
+
+    doc.font("Helvetica-Bold").text("Date Paid:", leftCol, infoTop + 36);
+    doc.font("Helvetica").text(paidDateStr, leftCol + 68, infoTop + 36);
+
+    // Right column
+    doc.font("Helvetica-Bold").text("Primary Payor:", rightCol, infoTop);
+    doc.font("Helvetica").text(data.primaryPayor || "N/A", rightCol + 90, infoTop);
+
+    if (data.secondaryPayer) {
+      doc.font("Helvetica-Bold").text("Secondary Payor:", rightCol, infoTop + 18);
+      doc.font("Helvetica").text(data.secondaryPayer, rightCol + 105, infoTop + 18);
+    }
+
+    doc.font("Helvetica-Bold").text("Confirmation:", rightCol, infoTop + 36);
+    doc.fontSize(8).font("Helvetica").text(data.stripeChargeId || "N/A", rightCol + 80, infoTop + 37);
+
+    doc.y = infoTop + 60;
     doc.moveDown(1);
 
-    // Patient info
-    doc.fontSize(11).font("Helvetica");
-    doc.text(`Patient: ${data.name}`);
-    doc.text(`Date of Service: ${data.dos || "N/A"}`);
-    doc.text(`Date Paid: ${data.paidDate || new Date().toISOString().split("T")[0]}`);
-    doc.text(`Stripe Confirmation: ${data.stripeChargeId || "N/A"}`);
-    if (data.primaryPayor) doc.text(`Primary Payor: ${data.primaryPayor}`);
-    if (data.secondaryPayer) doc.text(`Secondary Payor: ${data.secondaryPayer}`);
-    doc.moveDown(1);
-
-    // Divider
+    // ─── Divider ───
     doc.moveTo(50, doc.y).lineTo(562, doc.y).stroke();
-    doc.moveDown(0.5);
+    doc.moveDown(0.8);
+
+    // ─── Itemized Charges Header ───
+    doc.fontSize(11).font("Helvetica-Bold").text("AMOUNT PAID BY PATIENT AFTER INSURANCE", leftCol);
+    doc.moveDown(0.6);
+
+    // Column headers
+    const tableLeft = 60;
+    const tableRight = 540;
+    const amountCol = 470;
+    doc.fontSize(9).font("Helvetica-Bold");
+    doc.text("Item", tableLeft, doc.y);
+    doc.text("HCPCS", 280, doc.y);
+    doc.text("Amount", amountCol, doc.y);
+    doc.moveDown(0.3);
+    doc.moveTo(tableLeft, doc.y).lineTo(tableRight, doc.y).lineWidth(0.5).stroke();
+    doc.moveDown(0.4);
 
     // Line items
-    doc.fontSize(12).font("Helvetica-Bold").text("ITEMIZED CHARGES (your share):");
-    doc.moveDown(0.5);
-
     doc.fontSize(10).font("Helvetica");
     for (const li of data.lineItems) {
       const modStr = li.modifiers ? ` ${li.modifiers}` : "";
-      const oweStr = li.patientOwes > 0 ? `$${li.patientOwes.toFixed(2)}` : "$0.00";
-      doc.text(`  ${li.name} (${li.hcpcCode}${modStr})`, 60, doc.y, { continued: true, width: 350 });
-      doc.text(oweStr, { align: "right" });
+      const y = doc.y;
+      doc.text(li.name, tableLeft, y, { width: 210 });
+      doc.text(`${li.hcpcCode}${modStr}`, 280, y, { width: 150 });
+      doc.text(li.patientOwes > 0 ? `$${li.patientOwes.toFixed(2)}` : "$0.00", amountCol, y, { width: 70, align: "right" });
+      doc.moveDown(0.3);
     }
+
+    doc.moveDown(0.3);
+    doc.moveTo(tableLeft, doc.y).lineTo(tableRight, doc.y).lineWidth(0.5).stroke();
     doc.moveDown(0.5);
 
-    // Divider
-    doc.moveTo(50, doc.y).lineTo(562, doc.y).stroke();
-    doc.moveDown(0.5);
-
-    // Total
+    // ─── Total ───
     doc.fontSize(12).font("Helvetica-Bold");
-    doc.text(`  TOTAL PAID`, 60, doc.y, { continued: true, width: 350 });
-    doc.text(`$${data.paidAmount.toFixed(2)}`, { align: "right" });
-    doc.moveDown(1.5);
+    doc.text("TOTAL PAID", tableLeft, doc.y, { width: 400 });
+    doc.fontSize(14).text(`$${data.paidAmount.toFixed(2)}`, amountCol - 20, doc.y - 16, { width: 90, align: "right" });
+    doc.moveDown(1);
 
-    // FSA/HSA notice
+    // ─── Payment Method ───
+    doc.fontSize(10).font("Helvetica-Bold").text("Payment Method:", tableLeft, doc.y);
+    doc.font("Helvetica").text(paymentMethodSummary, tableLeft + 100, doc.y);
+    doc.moveDown(2);
+
+    // ─── Divider ───
+    doc.moveTo(50, doc.y).lineTo(562, doc.y).lineWidth(0.5).stroke();
+    doc.moveDown(1);
+
+    // ─── FSA/HSA Notice ───
     doc.fontSize(9).font("Helvetica-Oblique")
       .text("This receipt is suitable for FSA / HSA reimbursement under IRS 213(d).", { align: "center" });
     doc.moveDown(0.5);
-    doc.text(`Generated: ${new Date().toISOString()}`, { align: "center" });
+    doc.fontSize(8).font("Helvetica")
+      .text(`Receipt #${receiptNumber}  \u00b7  Generated ${new Date().toISOString().split("T")[0]}`, { align: "center" });
 
     doc.end();
   } catch (err) {
