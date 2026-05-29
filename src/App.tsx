@@ -2,6 +2,11 @@ import { useState, useEffect } from "react";
 
 const API_URL = import.meta.env.VITE_API_URL || "https://coins-form-payment-production.up.railway.app";
 
+/** Format a number as USD with commas (e.g. 1234.56 → "$1,234.56") */
+function fmt(n: number): string {
+  return "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
 interface LineItem {
   name: string;
   hcpcCode: string;
@@ -178,7 +183,7 @@ export default function App() {
             <h2 className="text-xl font-semibold text-foreground">Payment Received</h2>
             <p className="text-sm text-muted-foreground">
               Thank you{data ? `, ${data.name}` : ""}! Your payment
-              {data ? ` of $${data.paidAmount.toFixed(2)}` : ""} has been received.
+              {data ? ` of ${fmt(data.paidAmount)}` : ""} has been received.
             </p>
             {data?.stripeChargeId && (
               <p className="text-xs text-muted-foreground">
@@ -296,7 +301,7 @@ export default function App() {
                   </p>
                 </div>
                 <p className={`text-sm font-semibold ${li.patientOwes > 0 ? "text-foreground" : "text-muted-foreground"}`}>
-                  ${li.patientOwes.toFixed(2)}
+                  {fmt(li.patientOwes)}
                 </p>
               </div>
             ))}
@@ -305,7 +310,7 @@ export default function App() {
           {/* Total */}
           <div className="flex items-center justify-between pt-3 border-t-2 border-foreground/20">
             <p className="text-base font-bold text-foreground">Total Due</p>
-            <p className="text-xl font-bold text-foreground">${data.totalPatientOwes.toFixed(2)}</p>
+            <p className="text-xl font-bold text-foreground">{fmt(data.totalPatientOwes)}</p>
           </div>
         </div>
 
@@ -315,12 +320,15 @@ export default function App() {
             onClick={handlePay}
             className="w-full rounded-md bg-primary py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
           >
-            Pay ${data.totalPatientOwes.toFixed(2)}
+            Pay {fmt(data.totalPatientOwes)}
           </button>
         )}
 
         <p className="text-xs text-center text-muted-foreground">
           Secure payment powered by Stripe. HSA/FSA cards accepted.
+        </p>
+        <p className="text-xs text-center text-muted-foreground">
+          You will receive a copy of your receipt after payment that meets HSA/FSA reimbursement standards.
         </p>
       </main>
     </div>

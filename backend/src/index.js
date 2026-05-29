@@ -290,12 +290,6 @@ app.post("/api/create-checkout-session", apiLimiter, requireAuth, async (req, re
     const amountCents = Math.round(data.totalPatientOwes * 100);
     const paymentUrl = process.env.PAYMENT_URL || "https://medically-modern.github.io/coins-form-payment";
 
-    // Build line item description from ERA
-    const description = data.lineItems
-      .filter(li => li.patientOwes > 0)
-      .map(li => `${li.name} (${li.hcpcCode}) — $${li.patientOwes.toFixed(2)}`)
-      .join(", ");
-
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       mode: "payment",
@@ -304,7 +298,7 @@ app.post("/api/create-checkout-session", apiLimiter, requireAuth, async (req, re
           currency: "usd",
           product_data: {
             name: `DME Co-Insurance — ${data.name}`,
-            description: description || `DOS: ${data.dos}`,
+            description: data.dos ? `Date of Service: ${data.dos}` : undefined,
           },
           unit_amount: amountCents,
         },
