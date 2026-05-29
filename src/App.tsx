@@ -312,6 +312,20 @@ export default function App() {
             <p className="text-base font-bold text-foreground">Total Due</p>
             <p className="text-xl font-bold text-foreground">{fmt(data.totalPatientOwes)}</p>
           </div>
+
+          {/* Deductible / Coinsurance breakdown */}
+          {(() => {
+            const totalDed = data.lineItems.reduce((s, li) => s + li.deductibleAmount, 0);
+            const totalCoins = data.lineItems.reduce((s, li) => s + li.coinsuranceAmount, 0);
+            const parts: string[] = [];
+            if (totalDed > 0) parts.push(`${fmt(totalDed)} deductible`);
+            if (totalCoins > 0) parts.push(`${fmt(totalCoins)} coinsurance`);
+            return parts.length > 0 ? (
+              <p className="text-xs text-muted-foreground pt-1">
+                Includes: {parts.join(" · ")}
+              </p>
+            ) : null;
+          })()}
         </div>
 
         {/* Pay Button */}
