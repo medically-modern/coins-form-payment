@@ -7,8 +7,8 @@ const cookieParser = require("cookie-parser");
 const PDFDocument = require("pdfkit");
 const { verifyPaymentToken, generatePaymentToken, requireAuth, logout, COOKIE_OPTIONS } = require("./auth");
 const { getPatientPaymentData, storePaymentLinkInMonday, recordPaymentInMonday } = require("./monday");
-const { redis, healthCheck, getPaymentToken, markTokenPaid, isChargeProcessed, markChargeProcessed, logEvent } = require("./redis");
-const { COMPANY } = require("./config");
+const { redis, healthCheck, getPaymentToken, getTokenForItem, markTokenPaid, isChargeProcessed, markChargeProcessed, logEvent } = require("./redis");
+const { COMPANY, SECONDARY_BOARD_ID, SEND_INVOICE_GROUP_ID } = require("./config");
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
@@ -248,6 +248,100 @@ app.post("/admin/generate-token", async (req, res) => {
   } catch (err) {
     console.error("[admin] Error generating token:", err.message, err.stack);
     res.status(500).json({ error: "Failed to generate payment token" });
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// MONDAY WEBHOOK — auto-generate pay link on "Send Invoice"
+// ═══════════════════════════════════════════════════════
+//
+// Monday automation: "When item moves to Send Invoice group → send webhook"
+// Payload contains event.pulseId (item ID). We generate the token
+// and write it back to the Monday item columns.
+
+app.post("/webhook/monday", async (req, res) => {
+  // ─── Monday challenge handshake ───
+  if (req.body.challenge) {
+    console.log("[monday-wh] Challenge received");
+    return res.json({ challenge: req.body.challenge });
+  }
+
+  // ─── Validate webhook secret (optional but recommended) ───
+  const webhookSecret = process.env.MONDAY_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const authHeader = req.headers.authorization;
+    if (authHeader !== webhookSecret) {
+      console.warn("[monday-wh] Invalid webhook secret");
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+  }
+
+  const event = req.body.event;
+  if (!event) {
+    return res.status(400).json({ error: "No event in payload" });
+  }
+
+  const itemId = String(event.pulseId);
+  const boardId = String(event.boardId || "");
+  const groupId = event.groupId || event.destGroupId;
+
+  console.log(`[monday-wh] Event received: item=${itemId} board=${boardId} group=${groupId}`);
+
+  // ─── Guard: only process items on the correct board + group ───
+  if (boardId && boardId !== SECONDARY_BOARD_ID) {
+    console.log(`[monday-wh] Ignoring — wrong board (${boardId})`);
+    return res.json({ ok: true, skipped: true, reason: "wrong board" });
+  }
+
+  if (groupId && groupId !== SEND_INVOICE_GROUP_ID) {
+    console.log(`[monday-wh] Ignoring — wrong group (${groupId})`);
+    return res.json({ ok: true, skipped: true, reason: "wrong group" });
+  }
+
+  if (!itemId || itemId === "undefined") {
+    return res.status(400).json({ error: "Missing pulseId" });
+  }
+
+  try {
+    // ─── Idempotent: skip if token already exists ───
+    const existingToken = await getTokenForItem(itemId);
+    if (existingToken) {
+      console.log(`[monday-wh] Item ${itemId} already has a token — skipping`);
+      return res.json({ ok: true, skipped: true, reason: "token exists" });
+    }
+
+    // ─── Verify item exists and has a balance ───
+    const patientData = await getPatientPaymentData(itemId);
+    if (!patientData) {
+      console.warn(`[monday-wh] Item ${itemId} not found on board`);
+      return res.status(404).json({ error: "Item not found" });
+    }
+
+    if (patientData.totalPatientOwes <= 0) {
+      console.warn(`[monday-wh] Item ${itemId} (${patientData.name}) has $0 balance — skipping`);
+      return res.json({ ok: true, skipped: true, reason: "zero balance" });
+    }
+
+    // ─── Generate token + write to Monday ───
+    const token = await generatePaymentToken(itemId);
+    const paymentUrl = process.env.PAYMENT_URL || "https://medically-modern.github.io/coins-form-payment";
+    const link = `${paymentUrl}?token=${token}`;
+
+    await storePaymentLinkInMonday(itemId, token, link);
+
+    console.log(`[monday-wh] Payment link generated for item ${itemId} (${patientData.name}): $${patientData.totalPatientOwes}`);
+
+    res.json({
+      ok: true,
+      itemId,
+      patientName: patientData.name,
+      totalOwed: patientData.totalPatientOwes,
+      link,
+    });
+  } catch (err) {
+    console.error(`[monday-wh] Error processing item ${itemId}:`, err.message, err.stack);
+    // Return 200 so Monday doesn't retry endlessly — log the error
+    res.json({ ok: false, error: err.message });
   }
 });
 

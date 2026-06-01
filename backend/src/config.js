@@ -3,6 +3,7 @@
 // Source of truth: Secondary Claims Board (18413019028)
 
 const SECONDARY_BOARD_ID = "18413019028";
+const SEND_INVOICE_GROUP_ID = "group_mm3ba7x1";
 
 // Parent-level column IDs
 const COLUMNS = {
@@ -80,6 +81,7 @@ const COMPANY = {
 
 module.exports = {
   SECONDARY_BOARD_ID,
+  SEND_INVOICE_GROUP_ID,
   COLUMNS,
   SUBITEM_COLUMNS,
   AUTH,
