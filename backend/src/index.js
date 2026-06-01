@@ -388,6 +388,12 @@ app.post("/webhook/monday/send-text", async (req, res) => {
       return res.status(404).json({ error: "Item not found" });
     }
 
+    // ─── TEST GUARD: only send texts to items with [TEST] in the name ───
+    if (!patientData.name.includes("[TEST]")) {
+      console.log(`[send-text] Item ${itemId} (${patientData.name}) is not a test patient — skipping SMS`);
+      return res.json({ ok: true, skipped: true, reason: "not a test patient (missing [TEST] in name)" });
+    }
+
     // ─── Validate phone + pay link ───
     if (!patientData.phone) {
       console.warn(`[send-text] Item ${itemId} (${patientData.name}) has no phone number`);
