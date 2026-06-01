@@ -291,20 +291,64 @@ export default function App() {
             Your Share of Cost
           </p>
 
-          <div className="space-y-2">
-            {data.lineItems.map((li, i) => (
-              <div key={i} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                <div>
-                  <p className="text-sm font-medium text-foreground">{li.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {li.hcpcCode}{li.modifiers ? ` ${li.modifiers}` : ""}
-                  </p>
+          <div className="space-y-5">
+            {data.lineItems.map((li, i) => {
+              const insurancePaid = li.secondaryPaidLine;
+              const fullPrice = insurancePaid + li.patientOwes;
+              const insurancePct = fullPrice > 0 ? (insurancePaid / fullPrice) * 100 : 0;
+              const patientPct = fullPrice > 0 ? (li.patientOwes / fullPrice) * 100 : 0;
+
+              return (
+                <div key={i} className="space-y-2">
+                  <div className="flex items-baseline justify-between">
+                    <p className="text-sm font-semibold text-foreground">{li.name}</p>
+                    <p className="text-xs text-muted-foreground">{fmt(fullPrice)}</p>
+                  </div>
+
+                  {/* Bar */}
+                  <div className="h-7 w-full flex rounded-lg overflow-hidden border border-border">
+                    {insurancePct > 0 && (
+                      <div
+                        className="bg-emerald-500 h-full flex items-center justify-center"
+                        style={{ width: `${insurancePct}%` }}
+                      >
+                        {insurancePct > 25 && (
+                          <span className="text-[10px] font-bold text-white truncate px-1">
+                            {fmt(insurancePaid)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {patientPct > 0 && (
+                      <div
+                        className="bg-orange-400 h-full flex items-center justify-center"
+                        style={{ width: `${patientPct}%` }}
+                      >
+                        {patientPct > 20 && (
+                          <span className="text-[10px] font-bold text-white truncate px-1">
+                            {fmt(li.patientOwes)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Labels below bar */}
+                  <div className="flex justify-between text-[11px]">
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-500" />
+                      <span className="text-muted-foreground">Insurance covered</span>
+                      <span className="font-semibold text-emerald-600">{fmt(insurancePaid)}</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-2.5 h-2.5 rounded-sm bg-orange-400" />
+                      <span className="text-muted-foreground">Your share</span>
+                      <span className="font-semibold text-orange-600">{fmt(li.patientOwes)}</span>
+                    </span>
+                  </div>
                 </div>
-                <p className={`text-sm font-semibold ${li.patientOwes > 0 ? "text-foreground" : "text-muted-foreground"}`}>
-                  {fmt(li.patientOwes)}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Total */}
