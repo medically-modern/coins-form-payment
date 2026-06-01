@@ -105,7 +105,7 @@ function buildPaymentMessage(patientName, paymentLink, amount) {
     `Hi ${firstName}, this is Mid-Island Medical Supply.`,
     `You have a co-insurance balance${amountStr}.`,
     `View your statement and pay securely here: ${paymentLink}`,
-    `Questions? Call us at (516) 520-5555.`,
+    `Questions? Call us at (347) 503-7148.`,
   ].join(" ");
 }
 
