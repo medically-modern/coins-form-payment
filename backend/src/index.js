@@ -9,6 +9,7 @@ const { verifyPaymentToken, generatePaymentToken, requireAuth, logout, COOKIE_OP
 const { getPatientPaymentData, storePaymentLinkInMonday, recordPaymentInMonday } = require("./monday");
 const { redis, healthCheck, getPaymentToken, getTokenForItem, markTokenPaid, isChargeProcessed, markChargeProcessed, logEvent } = require("./redis");
 const { COMPANY, SECONDARY_BOARD_ID, SEND_INVOICE_GROUP_ID } = require("./config");
+const { sendSMS, buildPaymentMessage } = require("./ringcentral");
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
@@ -341,6 +342,89 @@ app.post("/webhook/monday", async (req, res) => {
   } catch (err) {
     console.error(`[monday-wh] Error processing item ${itemId}:`, err.message, err.stack);
     // Return 200 so Monday doesn't retry endlessly — log the error
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════
+// MONDAY WEBHOOK — send payment text via RingCentral
+// ═══════════════════════════════════════════════════════
+//
+// Monday automation: "When Secondary Status changes to 'Sent to Patient' → send webhook"
+// Looks up item → gets phone + pay link → sends SMS via RingCentral.
+
+app.post("/webhook/monday/send-text", async (req, res) => {
+  // ─── Monday challenge handshake ───
+  if (req.body.challenge) {
+    console.log("[send-text] Challenge received");
+    return res.json({ challenge: req.body.challenge });
+  }
+
+  const event = req.body.event;
+  if (!event) {
+    return res.status(400).json({ error: "No event in payload" });
+  }
+
+  const itemId = String(event.pulseId);
+  console.log(`[send-text] Event received: item=${itemId}`);
+
+  if (!itemId || itemId === "undefined") {
+    return res.status(400).json({ error: "Missing pulseId" });
+  }
+
+  try {
+    // ─── Idempotent: check if we already sent a text for this item ───
+    const smsSentKey = `pay-secondary:sms-sent:${itemId}`;
+    const alreadySent = await redis.get(smsSentKey);
+    if (alreadySent) {
+      console.log(`[send-text] Item ${itemId} already texted — skipping`);
+      return res.json({ ok: true, skipped: true, reason: "already sent" });
+    }
+
+    // ─── Get patient data ───
+    const patientData = await getPatientPaymentData(itemId);
+    if (!patientData) {
+      console.warn(`[send-text] Item ${itemId} not found`);
+      return res.status(404).json({ error: "Item not found" });
+    }
+
+    // ─── Validate phone + pay link ───
+    if (!patientData.phone) {
+      console.warn(`[send-text] Item ${itemId} (${patientData.name}) has no phone number`);
+      return res.json({ ok: false, error: "No phone number on file" });
+    }
+
+    // Look up existing token to build the link
+    const token = await getTokenForItem(itemId);
+    if (!token) {
+      console.warn(`[send-text] Item ${itemId} has no payment token — generate link first`);
+      return res.json({ ok: false, error: "No payment link generated yet" });
+    }
+
+    const paymentUrl = process.env.PAYMENT_URL || "https://medically-modern.github.io/coins-form-payment";
+    const link = `${paymentUrl}?token=${token}`;
+
+    // ─── Send SMS ───
+    const message = buildPaymentMessage(patientData.name, link, patientData.totalPatientOwes);
+    await sendSMS(patientData.phone, message);
+
+    // ─── Mark as sent (90-day TTL) ───
+    await redis.set(smsSentKey, new Date().toISOString(), "EX", 86400 * 90);
+
+    await logEvent(token, "sms_sent", {
+      itemId,
+      phone: patientData.phone.slice(-4), // log last 4 only
+    });
+
+    console.log(`[send-text] SMS sent for item ${itemId} (${patientData.name})`);
+
+    res.json({
+      ok: true,
+      itemId,
+      patientName: patientData.name,
+    });
+  } catch (err) {
+    console.error(`[send-text] Error for item ${itemId}:`, err.message, err.stack);
     res.json({ ok: false, error: err.message });
   }
 });
