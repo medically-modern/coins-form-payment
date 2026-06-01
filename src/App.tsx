@@ -262,9 +262,27 @@ export default function App() {
       </header>
 
       <main className="max-w-lg mx-auto px-4 py-6 space-y-5">
+        {/* Total Due — hero card */}
+        <div className="rounded-2xl border bg-card p-6 text-center space-y-1 shadow-sm">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">Amount Due</p>
+          <p className="text-4xl font-bold tracking-tight text-foreground">{fmt(data.totalPatientOwes)}</p>
+          {(() => {
+            const totalDed = data.lineItems.reduce((s, li) => s + li.deductibleAmount, 0);
+            const totalCoins = data.lineItems.reduce((s, li) => s + li.coinsuranceAmount, 0);
+            const parts: string[] = [];
+            if (totalDed > 0) parts.push(`${fmt(totalDed)} deductible`);
+            if (totalCoins > 0) parts.push(`${fmt(totalCoins)} coinsurance`);
+            return parts.length > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {parts.join(" + ")}
+              </p>
+            ) : null;
+          })()}
+        </div>
+
         {/* Claim Info */}
-        <div className="rounded-lg border bg-card p-5 space-y-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+        <div className="rounded-2xl border bg-card p-5 space-y-3 shadow-sm">
+          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
             Claim Details
           </p>
           <div className="grid grid-cols-2 gap-3 text-sm">
@@ -285,13 +303,26 @@ export default function App() {
           </div>
         </div>
 
-        {/* ERA Line Items */}
-        <div className="rounded-lg border bg-card p-5 space-y-3">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-            Your Share of Cost
-          </p>
+        {/* Itemized Breakdown */}
+        <div className="rounded-2xl border bg-card p-5 space-y-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
+              Itemized Breakdown
+            </p>
+            {/* Legend */}
+            <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                Insurance
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
+                Your share
+              </span>
+            </div>
+          </div>
 
-          <div className="space-y-5">
+          <div className="space-y-4">
             {data.lineItems.map((li, i) => {
               const insurancePaid = li.secondaryPaidLine;
               const fullPrice = insurancePaid + li.patientOwes;
@@ -299,94 +330,50 @@ export default function App() {
               const patientPct = fullPrice > 0 ? (li.patientOwes / fullPrice) * 100 : 0;
 
               return (
-                <div key={i} className="space-y-2">
+                <div key={i} className="space-y-1.5">
                   <div className="flex items-baseline justify-between">
-                    <p className="text-sm font-semibold text-foreground">{li.name}</p>
-                    <p className="text-xs text-muted-foreground">{fmt(fullPrice)}</p>
+                    <p className="text-sm font-medium text-foreground">{li.name}</p>
+                    <p className="text-xs text-muted-foreground tabular-nums">{fmt(fullPrice)}</p>
                   </div>
 
-                  {/* Bar */}
-                  <div className="h-7 w-full flex rounded-lg overflow-hidden border border-border">
+                  {/* Bar — no inner text */}
+                  <div className="h-5 w-full flex rounded-full overflow-hidden bg-muted/40">
                     {insurancePct > 0 && (
-                      <div
-                        className="bg-emerald-500 h-full flex items-center justify-center"
-                        style={{ width: `${insurancePct}%` }}
-                      >
-                        {insurancePct > 25 && (
-                          <span className="text-[10px] font-bold text-white truncate px-1">
-                            {fmt(insurancePaid)}
-                          </span>
-                        )}
-                      </div>
+                      <div className="bg-emerald-500 h-full" style={{ width: `${insurancePct}%` }} />
                     )}
                     {patientPct > 0 && (
-                      <div
-                        className="bg-orange-400 h-full flex items-center justify-center"
-                        style={{ width: `${patientPct}%` }}
-                      >
-                        {patientPct > 20 && (
-                          <span className="text-[10px] font-bold text-white truncate px-1">
-                            {fmt(li.patientOwes)}
-                          </span>
-                        )}
-                      </div>
+                      <div className="bg-amber-500 h-full" style={{ width: `${patientPct}%` }} />
                     )}
                   </div>
 
-                  {/* Labels below bar */}
-                  <div className="flex justify-between text-[11px]">
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-500" />
-                      <span className="text-muted-foreground">Insurance covered</span>
-                      <span className="font-semibold text-emerald-600">{fmt(insurancePaid)}</span>
+                  {/* Amounts below */}
+                  <div className="flex justify-between text-[11px] tabular-nums">
+                    <span className="text-emerald-600 font-medium">
+                      Covered {fmt(insurancePaid)}
                     </span>
-                    <span className="flex items-center gap-1">
-                      <span className="inline-block w-2.5 h-2.5 rounded-sm bg-orange-400" />
-                      <span className="text-muted-foreground">Your share</span>
-                      <span className="font-semibold text-orange-600">{fmt(li.patientOwes)}</span>
+                    <span className="text-amber-600 font-semibold">
+                      You owe {fmt(li.patientOwes)}
                     </span>
                   </div>
                 </div>
               );
             })}
           </div>
-
-          {/* Total */}
-          <div className="flex items-center justify-between pt-3 border-t-2 border-foreground/20">
-            <p className="text-base font-bold text-foreground">Total Due</p>
-            <p className="text-xl font-bold text-foreground">{fmt(data.totalPatientOwes)}</p>
-          </div>
-
-          {/* Deductible / Coinsurance breakdown */}
-          {(() => {
-            const totalDed = data.lineItems.reduce((s, li) => s + li.deductibleAmount, 0);
-            const totalCoins = data.lineItems.reduce((s, li) => s + li.coinsuranceAmount, 0);
-            const parts: string[] = [];
-            if (totalDed > 0) parts.push(`${fmt(totalDed)} deductible`);
-            if (totalCoins > 0) parts.push(`${fmt(totalCoins)} coinsurance`);
-            return parts.length > 0 ? (
-              <p className="text-xs text-muted-foreground pt-1">
-                Includes: {parts.join(" · ")}
-              </p>
-            ) : null;
-          })()}
         </div>
 
         {/* Pay Button */}
         {data.totalPatientOwes > 0 && (
           <button
             onClick={handlePay}
-            className="w-full rounded-md bg-primary py-3 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+            className="w-full rounded-xl bg-primary py-3.5 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
           >
             Pay {fmt(data.totalPatientOwes)}
           </button>
         )}
 
-        <p className="text-xs text-center text-muted-foreground">
-          Secure payment powered by Stripe. HSA/FSA cards accepted.
-        </p>
-        <p className="text-xs text-center text-muted-foreground">
-          You will receive a copy of your receipt after payment that meets HSA/FSA reimbursement standards.
+        <p className="text-[11px] text-center text-muted-foreground leading-relaxed">
+          Secure payment powered by Stripe. HSA/FSA cards accepted.<br />
+          A receipt will be provided after payment.
         </p>
       </main>
     </div>
