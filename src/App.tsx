@@ -16,24 +16,12 @@ function fmtSplit(n: number): { dollars: string; cents: string } {
   };
 }
 
-/** Medically Modern logo/icon */
+/** Medically Modern logo — rounded square with heart */
 function Logo() {
   return (
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="16" cy="16" r="16" fill="hsl(168 30% 38%)" />
-      <path
-        d="M16 8C12.5 8 10 10.5 10 13.5C10 18 16 24 16 24C16 24 22 18 22 13.5C22 10.5 19.5 8 16 8Z"
-        fill="white"
-        stroke="white"
-        strokeWidth="0.5"
-      />
-      <path
-        d="M14 14.5H18M16 12.5V16.5"
-        stroke="hsl(168 30% 38%)"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
+    <span style={{ width: 26, height: 26, borderRadius: 8, background: "linear-gradient(150deg,#4E8A82,#3C6F68)", display: "grid", placeItems: "center", flexShrink: 0 }}>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.4-7 10-7 10z"/></svg>
+    </span>
   );
 }
 
@@ -135,7 +123,7 @@ export default function App() {
     <div className="min-h-screen bg-background">
       <header className="flex items-center justify-center gap-2 py-5">
         <Logo />
-        <span className="text-lg font-semibold tracking-tight text-foreground">Medically Modern</span>
+        <span style={{ fontWeight: 600, letterSpacing: ".2px", fontSize: 15 }}>Medically Modern</span>
       </header>
       <main className="max-w-md mx-auto px-4 pb-10">
         <div className="rounded-2xl bg-card shadow-sm p-8 text-center space-y-3">
@@ -213,7 +201,7 @@ export default function App() {
       <div className="min-h-screen bg-background">
         <header className="flex items-center justify-center gap-2 py-5">
           <Logo />
-          <span className="text-lg font-semibold tracking-tight text-foreground">Medically Modern</span>
+          <span style={{ fontWeight: 600, letterSpacing: ".2px", fontSize: 15 }}>Medically Modern</span>
         </header>
         <main className="max-w-md mx-auto px-4 pb-10">
           <div className="rounded-2xl bg-card shadow-sm p-8 text-center space-y-5">
@@ -319,182 +307,153 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="flex items-center justify-center gap-2 py-5">
-        <Logo />
-        <span className="text-lg font-semibold tracking-tight text-foreground">Medically Modern</span>
-      </header>
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 18px 64px" }}>
+      <div style={{ width: "100%", maxWidth: 430 }}>
+        {/* Brand */}
+        <div style={{ display: "flex", alignItems: "center", gap: 9, justifyContent: "center", marginBottom: 22 }}>
+          <Logo />
+          <span style={{ fontWeight: 600, letterSpacing: ".2px", fontSize: 15 }}>Medically Modern</span>
+        </div>
 
-      <main className="max-w-md mx-auto px-4 pb-10">
-        <div className="rounded-2xl bg-card shadow-sm overflow-hidden">
-          {/* Greeting + claim context */}
-          <div className="px-6 pt-6 pb-5 text-center space-y-3">
-            <p className="text-base text-muted-foreground">
-              Hi <span className="font-semibold text-foreground">{data.name.split(" ")[0]}</span> — here's your statement
-            </p>
+        {/* Card */}
+        <div style={{ background: "#fff", borderRadius: 22, boxShadow: "0 1px 2px rgba(27,42,40,.04), 0 12px 32px rgba(27,42,40,.06)", overflow: "hidden" }}>
+          {/* Hero */}
+          <div style={{ padding: "30px 28px 26px", textAlign: "center", borderBottom: "1px solid #ECEAE4" }}>
+            <div style={{ fontSize: 14, color: "#7D8C89", marginBottom: 14 }}>
+              Hi <b style={{ color: "#1B2A28", fontWeight: 600 }}>{data.name.split(" ")[0]}</b> — here's your statement
+            </div>
 
-            {/* Date of service card */}
-            <div className="rounded-xl bg-foreground text-primary-foreground px-4 py-3 text-sm text-left flex items-start gap-2.5">
-              <svg className="w-4 h-4 mt-0.5 shrink-0 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-              <span className="opacity-90">
+            {/* Reorder card */}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 9, textAlign: "left", background: "#F7F6F2", border: "1px solid #ECEAE4", borderRadius: 14, padding: "11px 13px", marginBottom: 22, fontSize: 12.5, lineHeight: 1.45, color: "#7D8C89" }}>
+              <svg style={{ width: 15, height: 15, color: "#4E8A82", flexShrink: 0, marginTop: 1 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
+              <span>
                 Date of service for your{" "}
-                <span className="font-semibold text-white">{itemNames}</span>
-                {" "}re-order: <span className="font-semibold text-white">{data.dos || "N/A"}</span>
+                <b style={{ color: "#1B2A28", fontWeight: 600 }}>{itemNames}</b>
+                {" "}re-order: <b style={{ color: "#1B2A28", fontWeight: 600 }}>{data.dos || "N/A"}</b>
               </span>
             </div>
-          </div>
 
-          {/* Total amount */}
-          <div className="text-center pb-5 space-y-2">
-            <p className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground font-semibold">Your Total</p>
-            <p className="font-serif text-foreground leading-none" style={{ fontSize: "3.5rem", fontWeight: 700 }}>
-              {dollars}<sup className="text-2xl align-super">{cents}</sup>
-            </p>
+            <div style={{ fontSize: 11, letterSpacing: ".13em", textTransform: "uppercase" as const, color: "#A7B2AF", fontWeight: 600, marginBottom: 6 }}>Your total</div>
+            <div style={{ fontFamily: "'Fraunces',serif", fontWeight: 500, fontSize: 54, lineHeight: 1, letterSpacing: "-.01em", marginBottom: 14 }}>
+              {dollars}<span style={{ fontSize: 30, verticalAlign: "top", color: "#7D8C89" }}>{cents}</span>
+            </div>
 
-            {/* Insurance badge */}
+            {/* Covered pill */}
             {totalInsurancePaid > 0 && (
-              <div className="inline-flex items-center gap-1.5 bg-primary/10 text-primary rounded-full px-4 py-1.5 text-sm font-medium mt-1">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#E4EFEC", color: "#3C6F68", fontSize: 12.5, fontWeight: 600, padding: "7px 13px", borderRadius: 100 }}>
+                <svg style={{ width: 13, height: 13 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
                 {data.primaryPayor || "Insurance"} covered {fmt(totalInsurancePaid)} of your care
               </div>
             )}
           </div>
 
-          {/* Divider */}
-          <div className="border-t border-border" />
-
-          {/* Total cost summary bar */}
-          <div className="px-6 py-5 space-y-2.5">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Total cost of supplies</span>
-              <span className="font-semibold text-foreground tabular-nums">{fmt(totalFullPrice)}</span>
+          {/* Overall coverage bar */}
+          <div style={{ padding: "22px 28px 8px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 13, marginBottom: 9 }}>
+              <span style={{ color: "#7D8C89" }}>Total cost of supplies</span>
+              <span style={{ fontWeight: 600 }}>{fmt(totalFullPrice)}</span>
             </div>
-            <div className="h-3 w-full flex rounded-full overflow-hidden bg-muted/50">
-              <div className="bg-primary h-full rounded-full" style={{ width: `${insurancePctTotal}%` }} />
+            <div style={{ height: 9, borderRadius: 100, background: "#EAEDEB", overflow: "hidden", display: "flex" }}>
+              <div style={{ height: "100%", background: "linear-gradient(90deg,#4E8A82,#3C6F68)", borderRadius: 100, width: `${insurancePctTotal}%` }} />
             </div>
-            <div className="flex items-center justify-center gap-5 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-primary" />
-                Insurance paid {fmt(totalInsurancePaid)}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-muted" />
-                You pay {fmt(data.totalPatientOwes)}
-              </span>
+            <div style={{ display: "flex", gap: 18, justifyContent: "center", marginTop: 14, fontSize: 12, color: "#7D8C89" }}>
+              <span><i style={{ width: 9, height: 9, borderRadius: 3, display: "inline-block", marginRight: 6, verticalAlign: "middle", background: "#4E8A82" }} />Insurance paid {fmt(totalInsurancePaid)}</span>
+              <span><i style={{ width: 9, height: 9, borderRadius: 3, display: "inline-block", marginRight: 6, verticalAlign: "middle", background: "#C9D3D0" }} />You pay {fmt(data.totalPatientOwes)}</span>
             </div>
           </div>
 
-          {/* Divider */}
-          <div className="border-t border-border" />
+          {/* Itemized */}
+          <div style={{ padding: "8px 28px 4px" }}>
+            <div style={{ fontSize: 11, letterSpacing: ".13em", textTransform: "uppercase" as const, color: "#A7B2AF", fontWeight: 600, margin: "18px 0 6px" }}>Breakdown by item</div>
 
-          {/* Breakdown by item */}
-          <div className="px-6 py-5 space-y-5">
-            <p className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground font-semibold">
-              Breakdown by Item
-            </p>
+            {data.lineItems.map((li, i) => {
+              const insurancePaid = li.secondaryPaidLine;
+              const fullPrice = insurancePaid + li.patientOwes;
+              const insurancePct = fullPrice > 0 ? (insurancePaid / fullPrice) * 100 : 0;
+              const isFullyCovered = li.patientOwes === 0;
 
-            <div className="divide-y divide-border">
-              {data.lineItems.map((li, i) => {
-                const insurancePaid = li.secondaryPaidLine;
-                const fullPrice = insurancePaid + li.patientOwes;
-                const insurancePct = fullPrice > 0 ? (insurancePaid / fullPrice) * 100 : 0;
-                const isFullyCovered = li.patientOwes === 0;
-
-                return (
-                  <div key={i} className={`space-y-1.5 ${i > 0 ? "pt-4" : ""} ${i < data.lineItems.length - 1 ? "pb-4" : ""}`}>
-                    <div className="flex items-baseline justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{li.name}</p>
-                        <p className="text-xs text-muted-foreground">{li.hcpcCode}{li.modifiers ? ` ${li.modifiers}` : ""}</p>
-                      </div>
-                      <p className={`text-sm font-semibold tabular-nums ${isFullyCovered ? "text-primary" : "text-foreground"}`}>
-                        {fmt(li.patientOwes)}
-                      </p>
+              return (
+                <div key={i} style={{ padding: "16px 0", borderBottom: i < data.lineItems.length - 1 ? "1px solid #ECEAE4" : "none" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 600 }}>{li.name}</div>
+                      <div style={{ fontSize: 11, color: "#A7B2AF", marginTop: 2, letterSpacing: ".02em" }}>{li.hcpcCode}{li.modifiers ? ` ${li.modifiers}` : ""}</div>
                     </div>
-
-                    <div className="h-2.5 w-full flex rounded-full overflow-hidden bg-muted/50">
-                      {insurancePct > 0 && (
-                        <div className="bg-primary h-full rounded-full" style={{ width: `${insurancePct}%` }} />
-                      )}
-                    </div>
-
-                    <p className="text-xs text-muted-foreground">
-                      {isFullyCovered ? (
-                        <>Fully covered — insurance paid <span className="font-medium text-foreground">{fmt(insurancePaid)}</span></>
-                      ) : (
-                        <>Insurance paid <span className="font-medium text-foreground">{fmt(insurancePaid)}</span> of {fmt(fullPrice)}</>
-                      )}
-                    </p>
+                    <div style={{ fontSize: 15, fontWeight: 600, whiteSpace: "nowrap" as const, color: isFullyCovered ? "#4E8A82" : undefined }}>{fmt(li.patientOwes)}</div>
                   </div>
-                );
-              })}
-            </div>
+                  <div style={{ height: 6, borderRadius: 100, background: "#EAEDEB", margin: "11px 0 7px", overflow: "hidden" }}>
+                    <div style={{ height: "100%", background: "linear-gradient(90deg,#4E8A82,#3C6F68)", borderRadius: 100, width: `${insurancePct}%` }} />
+                  </div>
+                  <div style={{ fontSize: 12, color: "#7D8C89" }}>
+                    {isFullyCovered ? (
+                      <>Fully covered — insurance paid <b style={{ color: "#4E8A82", fontWeight: 600 }}>{fmt(insurancePaid)}</b></>
+                    ) : (
+                      <>Insurance paid <b style={{ color: "#4E8A82", fontWeight: 600 }}>{fmt(insurancePaid)}</b> of {fmt(fullPrice)}</>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
-          {/* Divider */}
-          <div className="border-t border-border" />
-
-          {/* Your share footer */}
-          <div className="px-6 py-4 flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Your share of cost</span>
-            <span className="text-2xl font-bold text-foreground tabular-nums">{fmt(data.totalPatientOwes)}</span>
+          {/* Total strip */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 28px", background: "#FAFBFA", borderTop: "1px solid #ECEAE4" }}>
+            <span style={{ fontSize: 14, color: "#7D8C89" }}>Your share of cost</span>
+            <span style={{ fontFamily: "'Fraunces',serif", fontSize: 26, fontWeight: 500 }}>{fmt(data.totalPatientOwes)}</span>
           </div>
-        </div>
 
-        {/* Pay Button */}
-        {data.totalPatientOwes > 0 && (
-          <button
-            onClick={handlePay}
-            className="w-full mt-5 rounded-full bg-primary py-3.5 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
-          >
-            Pay {fmt(data.totalPatientOwes)}
-          </button>
-        )}
-
-        {/* Footer text */}
-        <div className="text-center mt-4 space-y-1">
-          <p className="text-[11px] text-muted-foreground flex items-center justify-center gap-1">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-            Secure payment by Stripe &middot; HSA/FSA accepted
-          </p>
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
-            A receipt that meets HSA/FSA reimbursement standards will be<br />emailed to you after payment.
-          </p>
-        </div>
-
-        {/* Questions section */}
-        <div className="mt-6 border-t border-border pt-5">
-          <p className="text-sm text-center text-muted-foreground mb-3">Questions about this statement?</p>
-          {questionStatus === "sent" ? (
-            <div className="text-center text-sm text-primary font-medium py-2">
-              Message sent — we'll get back to you shortly.
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={questionText}
-                onChange={(e) => { setQuestionText(e.target.value); if (questionStatus === "error") setQuestionStatus("idle"); }}
-                onKeyDown={(e) => { if (e.key === "Enter") handleSendQuestion(); }}
-                placeholder="Send us a message..."
-                className="flex-1 rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                disabled={questionStatus === "sending"}
-              />
+          {/* Pay area — inside card */}
+          <div style={{ padding: "20px 28px 26px" }}>
+            {data.totalPatientOwes > 0 && (
               <button
-                onClick={handleSendQuestion}
-                disabled={!questionText.trim() || questionStatus === "sending"}
-                className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center hover:bg-primary/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                onClick={handlePay}
+                style={{ width: "100%", border: "none", cursor: "pointer", background: "linear-gradient(150deg,#4E8A82,#3C6F68)", color: "#fff", fontFamily: "'Hanken Grotesk',sans-serif", fontSize: 16, fontWeight: 600, letterSpacing: ".2px", padding: 16, borderRadius: 15, boxShadow: "0 8px 20px rgba(62,111,104,.28)" }}
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                Pay {fmt(data.totalPatientOwes)}
               </button>
+            )}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, marginTop: 14, fontSize: 12, color: "#7D8C89" }}>
+              <svg style={{ width: 13, height: 13 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+              Secure payment by Stripe &middot; HSA/FSA accepted
             </div>
-          )}
-          {questionStatus === "error" && (
-            <p className="text-xs text-red-500 text-center mt-2">Failed to send. Please try again.</p>
-          )}
+            <div style={{ textAlign: "center" as const, fontSize: 11, color: "#A7B2AF", marginTop: 13, lineHeight: 1.5, maxWidth: 340, marginLeft: "auto", marginRight: "auto" }}>
+              A receipt that meets HSA/FSA reimbursement standards will be emailed to you after payment.
+            </div>
+
+            {/* Questions — inside card */}
+            <div style={{ marginTop: 20, paddingTop: 18, borderTop: "1px solid #ECEAE4" }}>
+              <span style={{ display: "block", fontSize: 12, color: "#7D8C89", marginBottom: 8, textAlign: "center" as const }}>Questions about this statement?</span>
+              {questionStatus === "sent" ? (
+                <div style={{ textAlign: "center" as const, fontSize: 13, color: "#4E8A82", fontWeight: 600, padding: "8px 0" }}>
+                  Message sent — we'll get back to you shortly.
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    type="text"
+                    value={questionText}
+                    onChange={(e) => { setQuestionText(e.target.value); if (questionStatus === "error") setQuestionStatus("idle"); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleSendQuestion(); }}
+                    placeholder="Send us a message…"
+                    disabled={questionStatus === "sending"}
+                    style={{ flex: 1, border: "1px solid #ECEAE4", background: "#FAFBFA", borderRadius: 11, padding: "10px 13px", fontFamily: "'Hanken Grotesk',sans-serif", fontSize: 13, color: "#1B2A28", outline: "none" }}
+                  />
+                  <button
+                    onClick={handleSendQuestion}
+                    disabled={!questionText.trim() || questionStatus === "sending"}
+                    style={{ flexShrink: 0, width: 40, height: 40, border: "none", cursor: "pointer", borderRadius: 11, background: "#E4EFEC", color: "#3C6F68", display: "grid", placeItems: "center", opacity: (!questionText.trim() || questionStatus === "sending") ? 0.4 : 1 }}
+                  >
+                    <svg style={{ width: 16, height: 16 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4 20-7z"/></svg>
+                  </button>
+                </div>
+              )}
+              {questionStatus === "error" && (
+                <div style={{ fontSize: 11, color: "#e53e3e", textAlign: "center" as const, marginTop: 8 }}>Failed to send. Please try again.</div>
+              )}
+            </div>
+          </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

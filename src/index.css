@@ -4,39 +4,52 @@
 
 @layer base {
   :root {
-    --background: 30 25% 93%;
-    --foreground: 220 20% 18%;
+    /* Exact tokens from mockup */
+    --bg: #EFEDE7;
+    --card-white: #FFFFFF;
+    --ink: #1B2A28;
+    --muted-color: #7D8C89;
+    --faint: #A7B2AF;
+    --line: #ECEAE4;
+    --teal: #4E8A82;
+    --teal-deep: #3C6F68;
+    --teal-soft: #E4EFEC;
+    --teal-track: #EAEDEB;
+
+    /* Tailwind CSS variable mappings (HSL) */
+    --background: 40 10% 92%;
+    --foreground: 165 22% 13%;
 
     --card: 0 0% 100%;
-    --card-foreground: 220 20% 18%;
+    --card-foreground: 165 22% 13%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 20% 18%;
+    --popover-foreground: 165 22% 13%;
 
-    --primary: 168 30% 38%;
+    --primary: 168 28% 42%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 30 15% 92%;
-    --secondary-foreground: 220 20% 18%;
+    --secondary: 40 10% 95%;
+    --secondary-foreground: 165 22% 13%;
 
-    --muted: 30 10% 90%;
-    --muted-foreground: 220 10% 46%;
+    --muted: 40 6% 90%;
+    --muted-foreground: 165 8% 52%;
 
-    --accent: 168 30% 38%;
+    --accent: 168 28% 42%;
     --accent-foreground: 0 0% 100%;
 
-    --success: 168 35% 35%;
+    --success: 168 30% 33%;
     --success-foreground: 0 0% 100%;
 
     --warning: 38 92% 50%;
-    --warning-foreground: 220 20% 12%;
+    --warning-foreground: 165 22% 13%;
 
     --destructive: 0 75% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 30 15% 85%;
-    --input: 30 15% 88%;
-    --ring: 168 30% 38%;
+    --border: 38 10% 91%;
+    --input: 38 10% 91%;
+    --ring: 168 28% 42%;
 
     --radius: 0.75rem;
   }
@@ -45,8 +58,11 @@
 @layer base {
   * { @apply border-border; }
   body {
-    @apply bg-background text-foreground antialiased;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    font-family: 'Hanken Grotesk', sans-serif;
+    background: radial-gradient(900px 500px at 50% -10%, #F6F4EF 0%, var(--bg) 60%);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
   }
   h1, h2, h3, h4 { @apply tracking-tight; }
 }
