@@ -7,6 +7,36 @@ function fmt(n: number): string {
   return "$" + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
 
+/** Split a formatted dollar amount into dollars and cents for superscript display */
+function fmtSplit(n: number): { dollars: string; cents: string } {
+  const parts = n.toFixed(2).split(".");
+  return {
+    dollars: "$" + parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ","),
+    cents: "." + parts[1],
+  };
+}
+
+/** Medically Modern logo/icon */
+function Logo() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="16" cy="16" r="16" fill="hsl(168 30% 38%)" />
+      <path
+        d="M16 8C12.5 8 10 10.5 10 13.5C10 18 16 24 16 24C16 24 22 18 22 13.5C22 10.5 19.5 8 16 8Z"
+        fill="white"
+        stroke="white"
+        strokeWidth="0.5"
+      />
+      <path
+        d="M14 14.5H18M16 12.5V16.5"
+        stroke="hsl(168 30% 38%)"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 interface LineItem {
   name: string;
   hcpcCode: string;
@@ -98,29 +128,41 @@ export default function App() {
     }
   }
 
+  // ─── Shell for status screens ───
+  const StatusShell = ({ children }: { children: React.ReactNode }) => (
+    <div className="min-h-screen bg-background">
+      <header className="flex items-center justify-center gap-2 py-5">
+        <Logo />
+        <span className="text-lg font-semibold tracking-tight text-foreground">Medically Modern</span>
+      </header>
+      <main className="max-w-md mx-auto px-4 pb-10">
+        <div className="rounded-2xl bg-card shadow-sm p-8 text-center space-y-3">
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+
   // ─── No token ───
   if (appState.mode === "no-token") {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="rounded-lg border bg-card p-8 max-w-md text-center space-y-3">
-          <div className="text-3xl">&#128274;</div>
-          <h2 className="text-lg font-semibold text-foreground">Invalid Link</h2>
-          <p className="text-sm text-muted-foreground">
-            This page requires a valid payment link. Please use the link sent to your phone.
-          </p>
-        </div>
-      </div>
+      <StatusShell>
+        <div className="text-3xl">&#128274;</div>
+        <h2 className="text-lg font-semibold text-foreground">Invalid Link</h2>
+        <p className="text-sm text-muted-foreground">
+          This page requires a valid payment link. Please use the link sent to your phone.
+        </p>
+      </StatusShell>
     );
   }
 
   // ─── Loading ───
   if (appState.mode === "loading") {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
-          <p className="text-sm text-muted-foreground">Loading your payment details...</p>
-        </div>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+        <Logo />
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+        <p className="text-sm text-muted-foreground">Loading your statement...</p>
       </div>
     );
   }
@@ -128,39 +170,34 @@ export default function App() {
   // ─── Expired ───
   if (appState.mode === "expired") {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="rounded-lg border bg-card p-8 max-w-md text-center space-y-3">
-          <div className="text-3xl">&#128274;</div>
-          <h2 className="text-lg font-semibold text-foreground">Link Expired</h2>
-          <p className="text-sm text-muted-foreground">
-            This payment link has expired or is no longer valid. Please contact Mid-Island Medical to request a new one.
-          </p>
-        </div>
-      </div>
+      <StatusShell>
+        <div className="text-3xl">&#128274;</div>
+        <h2 className="text-lg font-semibold text-foreground">Link Expired</h2>
+        <p className="text-sm text-muted-foreground">
+          This payment link has expired or is no longer valid. Please contact us to request a new one.
+        </p>
+      </StatusShell>
     );
   }
 
   // ─── Error ───
   if (appState.mode === "error") {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="rounded-lg border bg-card p-8 max-w-md text-center space-y-3">
-          <div className="text-3xl">&#9888;&#65039;</div>
-          <h2 className="text-lg font-semibold text-foreground">Something went wrong</h2>
-          <p className="text-sm text-muted-foreground">{appState.message}</p>
-        </div>
-      </div>
+      <StatusShell>
+        <div className="text-3xl">&#9888;&#65039;</div>
+        <h2 className="text-lg font-semibold text-foreground">Something went wrong</h2>
+        <p className="text-sm text-muted-foreground">{appState.message}</p>
+      </StatusShell>
     );
   }
 
   // ─── Paying (redirect in progress) ───
   if (appState.mode === "paying") {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-3">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto" />
-          <p className="text-sm text-muted-foreground">Redirecting to secure payment...</p>
-        </div>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-4">
+        <Logo />
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+        <p className="text-sm text-muted-foreground">Redirecting to secure payment...</p>
       </div>
     );
   }
@@ -172,14 +209,15 @@ export default function App() {
 
     return (
       <div className="min-h-screen bg-background">
-        <header className="border-b bg-card px-6 py-4">
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">
-            Mid-Island Medical Supply
-          </h1>
+        <header className="flex items-center justify-center gap-2 py-5">
+          <Logo />
+          <span className="text-lg font-semibold tracking-tight text-foreground">Medically Modern</span>
         </header>
-        <main className="max-w-lg mx-auto px-4 py-8">
-          <div className="rounded-lg border bg-card p-6 text-center space-y-4">
-            <div className="text-4xl">&#9989;</div>
+        <main className="max-w-md mx-auto px-4 pb-10">
+          <div className="rounded-2xl bg-card shadow-sm p-8 text-center space-y-5">
+            <div className="mx-auto w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="hsl(168 30% 38%)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            </div>
             <h2 className="text-xl font-semibold text-foreground">Payment Received</h2>
             <p className="text-sm text-muted-foreground">
               Thank you{data ? `, ${data.name}` : ""}! Your payment
@@ -191,13 +229,11 @@ export default function App() {
               </p>
             )}
 
-            {/* Receipt download */}
             {jwt && (
               <a
                 href={`${API_URL}/api/receipt`}
                 onClick={(e) => {
                   e.preventDefault();
-                  // Fetch with auth and trigger download
                   fetch(`${API_URL}/api/receipt`, {
                     headers: { Authorization: `Bearer ${jwt}` },
                   })
@@ -211,14 +247,15 @@ export default function App() {
                       URL.revokeObjectURL(url);
                     });
                 }}
-                className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 cursor-pointer"
+                className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 cursor-pointer transition-colors"
               >
-                &#128196; Download Receipt (FSA/HSA)
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download Receipt (FSA/HSA)
               </a>
             )}
 
-            <p className="text-xs text-muted-foreground mt-4">
-              Stripe will also email a receipt to the card on file.
+            <p className="text-xs text-muted-foreground">
+              A receipt will also be emailed to the card on file.
             </p>
           </div>
         </main>
@@ -226,8 +263,14 @@ export default function App() {
     );
   }
 
-  // ─── Authenticated: show ERA breakdown + Pay button ───
+  // ─── Authenticated: show statement + Pay button ───
   const { jwt, data } = appState as { mode: "authenticated"; jwt: string; data: PatientData };
+
+  const totalInsurancePaid = data.lineItems.reduce((s, li) => s + li.secondaryPaidLine, 0);
+  const totalFullPrice = totalInsurancePaid + data.totalPatientOwes;
+  const insurancePctTotal = totalFullPrice > 0 ? (totalInsurancePaid / totalFullPrice) * 100 : 0;
+  const itemNames = data.lineItems.map((li) => li.name).join(", ");
+  const { dollars, cents } = fmtSplit(data.totalPatientOwes);
 
   async function handlePay() {
     setAppState({ mode: "paying" } as any);
@@ -252,112 +295,125 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b bg-card px-6 py-4">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          Mid-Island Medical Supply
-        </h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Payment for <span className="font-medium text-foreground">{data.name}</span>
-        </p>
+      {/* Header */}
+      <header className="flex items-center justify-center gap-2 py-5">
+        <Logo />
+        <span className="text-lg font-semibold tracking-tight text-foreground">Medically Modern</span>
       </header>
 
-      <main className="max-w-lg mx-auto px-4 py-6 space-y-5">
-        {/* Total Due — hero card */}
-        <div className="rounded-2xl border bg-card p-6 text-center space-y-1 shadow-sm">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">Amount Due</p>
-          <p className="text-4xl font-bold tracking-tight text-foreground">{fmt(data.totalPatientOwes)}</p>
-          {(() => {
-            const totalDed = data.lineItems.reduce((s, li) => s + li.deductibleAmount, 0);
-            const totalCoins = data.lineItems.reduce((s, li) => s + li.coinsuranceAmount, 0);
-            const parts: string[] = [];
-            if (totalDed > 0) parts.push(`${fmt(totalDed)} deductible`);
-            if (totalCoins > 0) parts.push(`${fmt(totalCoins)} coinsurance`);
-            return parts.length > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                {parts.join(" + ")}
-              </p>
-            ) : null;
-          })()}
-        </div>
+      <main className="max-w-md mx-auto px-4 pb-10">
+        <div className="rounded-2xl bg-card shadow-sm overflow-hidden">
+          {/* Greeting + claim context */}
+          <div className="px-6 pt-6 pb-5 text-center space-y-3">
+            <p className="text-base text-muted-foreground">
+              Hi <span className="font-semibold text-foreground">{data.name.split(" ")[0]}</span> — here's your statement
+            </p>
 
-        {/* Claim Info */}
-        <div className="rounded-2xl border bg-card p-5 space-y-3 shadow-sm">
-          <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
-            Claim Details
-          </p>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <span className="text-muted-foreground">Date of Service</span>
-              <p className="font-medium text-foreground">{data.dos || "N/A"}</p>
+            {/* Date of service card */}
+            <div className="rounded-xl bg-foreground/[0.04] border border-border px-4 py-3 text-sm text-muted-foreground text-left flex items-start gap-2.5">
+              <svg className="w-4 h-4 mt-0.5 shrink-0 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+              <span>
+                Date of service for your{" "}
+                <span className="font-semibold text-foreground">{itemNames}</span>
+                {" "}re-order: <span className="font-semibold text-foreground">{data.dos || "N/A"}</span>
+              </span>
             </div>
-            <div>
-              <span className="text-muted-foreground">Primary Payor</span>
-              <p className="font-medium text-foreground">{data.primaryPayor || "N/A"}</p>
-            </div>
-            {data.secondaryPayer && (
-              <div>
-                <span className="text-muted-foreground">Secondary Payor</span>
-                <p className="font-medium text-foreground">{data.secondaryPayer}</p>
+          </div>
+
+          {/* Total amount */}
+          <div className="text-center pb-5 space-y-2">
+            <p className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground font-semibold">Your Total</p>
+            <p className="font-serif text-foreground leading-none" style={{ fontSize: "3.5rem", fontWeight: 700 }}>
+              {dollars}<sup className="text-2xl align-super">{cents}</sup>
+            </p>
+
+            {/* Insurance badge */}
+            {totalInsurancePaid > 0 && (
+              <div className="inline-flex items-center gap-1.5 bg-primary/10 text-primary rounded-full px-4 py-1.5 text-sm font-medium mt-1">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                {data.primaryPayor || "Insurance"} covered {fmt(totalInsurancePaid)} of your care
               </div>
             )}
           </div>
-        </div>
 
-        {/* Itemized Breakdown */}
-        <div className="rounded-2xl border bg-card p-5 space-y-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold">
-              Itemized Breakdown
-            </p>
-            {/* Legend */}
-            <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-                Insurance
+          {/* Divider */}
+          <div className="border-t border-border" />
+
+          {/* Total cost summary bar */}
+          <div className="px-6 py-5 space-y-2.5">
+            <div className="flex justify-between text-sm">
+              <span className="text-muted-foreground">Total cost of supplies</span>
+              <span className="font-semibold text-foreground tabular-nums">{fmt(totalFullPrice)}</span>
+            </div>
+            <div className="h-3 w-full flex rounded-full overflow-hidden bg-muted/50">
+              <div className="bg-primary h-full rounded-full" style={{ width: `${insurancePctTotal}%` }} />
+            </div>
+            <div className="flex items-center justify-center gap-5 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-primary" />
+                Insurance paid {fmt(totalInsurancePaid)}
               </span>
-              <span className="flex items-center gap-1">
-                <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
-                Your share
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-2.5 h-2.5 rounded-sm bg-muted" />
+                You pay {fmt(data.totalPatientOwes)}
               </span>
             </div>
           </div>
 
-          <div className="space-y-4">
-            {data.lineItems.map((li, i) => {
-              const insurancePaid = li.secondaryPaidLine;
-              const fullPrice = insurancePaid + li.patientOwes;
-              const insurancePct = fullPrice > 0 ? (insurancePaid / fullPrice) * 100 : 0;
-              const patientPct = fullPrice > 0 ? (li.patientOwes / fullPrice) * 100 : 0;
+          {/* Divider */}
+          <div className="border-t border-border" />
 
-              return (
-                <div key={i} className="space-y-1.5">
-                  <div className="flex items-baseline justify-between">
-                    <p className="text-sm font-medium text-foreground">{li.name}</p>
-                    <p className="text-xs text-muted-foreground tabular-nums">{fmt(fullPrice)}</p>
-                  </div>
+          {/* Breakdown by item */}
+          <div className="px-6 py-5 space-y-5">
+            <p className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground font-semibold">
+              Breakdown by Item
+            </p>
 
-                  {/* Bar — no inner text */}
-                  <div className="h-5 w-full flex rounded-full overflow-hidden bg-muted/40">
-                    {insurancePct > 0 && (
-                      <div className="bg-emerald-500 h-full" style={{ width: `${insurancePct}%` }} />
-                    )}
-                    {patientPct > 0 && (
-                      <div className="bg-amber-500 h-full" style={{ width: `${patientPct}%` }} />
-                    )}
-                  </div>
+            <div className="space-y-5">
+              {data.lineItems.map((li, i) => {
+                const insurancePaid = li.secondaryPaidLine;
+                const fullPrice = insurancePaid + li.patientOwes;
+                const insurancePct = fullPrice > 0 ? (insurancePaid / fullPrice) * 100 : 0;
+                const isFullyCovered = li.patientOwes === 0;
 
-                  {/* Amounts below */}
-                  <div className="flex justify-between text-[11px] tabular-nums">
-                    <span className="text-emerald-600 font-medium">
-                      Covered {fmt(insurancePaid)}
-                    </span>
-                    <span className="text-amber-600 font-semibold">
-                      You owe {fmt(li.patientOwes)}
-                    </span>
+                return (
+                  <div key={i} className="space-y-1.5">
+                    <div className="flex items-baseline justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{li.name}</p>
+                        <p className="text-xs text-muted-foreground">{li.hcpcCode}{li.modifiers ? ` ${li.modifiers}` : ""}</p>
+                      </div>
+                      <p className={`text-sm font-semibold tabular-nums ${isFullyCovered ? "text-primary" : "text-foreground"}`}>
+                        {fmt(li.patientOwes)}
+                      </p>
+                    </div>
+
+                    <div className="h-2.5 w-full flex rounded-full overflow-hidden bg-muted/50">
+                      {insurancePct > 0 && (
+                        <div className="bg-primary h-full rounded-full" style={{ width: `${insurancePct}%` }} />
+                      )}
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      {isFullyCovered ? (
+                        <>Fully covered — insurance paid <span className="font-medium text-foreground">{fmt(insurancePaid)}</span></>
+                      ) : (
+                        <>Insurance paid <span className="font-medium text-foreground">{fmt(insurancePaid)}</span> of {fmt(fullPrice)}</>
+                      )}
+                    </p>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="border-t border-border" />
+
+          {/* Your share footer */}
+          <div className="px-6 py-4 flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Your share of cost</span>
+            <span className="text-2xl font-bold text-foreground tabular-nums">{fmt(data.totalPatientOwes)}</span>
           </div>
         </div>
 
@@ -365,13 +421,13 @@ export default function App() {
         {data.totalPatientOwes > 0 && (
           <button
             onClick={handlePay}
-            className="w-full rounded-xl bg-primary py-3.5 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+            className="w-full mt-5 rounded-xl bg-primary py-3.5 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
           >
             Pay {fmt(data.totalPatientOwes)}
           </button>
         )}
 
-        <p className="text-[11px] text-center text-muted-foreground leading-relaxed">
+        <p className="text-[11px] text-center text-muted-foreground leading-relaxed mt-4">
           Secure payment powered by Stripe. HSA/FSA cards accepted.<br />
           A receipt will be provided after payment.
         </p>
