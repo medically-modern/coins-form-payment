@@ -74,6 +74,8 @@ type AppState =
 
 export default function App() {
   const [appState, setAppState] = useState<AppState>({ mode: "loading" });
+  const [questionText, setQuestionText] = useState("");
+  const [questionStatus, setQuestionStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -265,9 +267,6 @@ export default function App() {
 
   // ─── Authenticated: show statement + Pay button ───
   const { jwt, data } = appState as { mode: "authenticated"; jwt: string; data: PatientData };
-
-  const [questionText, setQuestionText] = useState("");
-  const [questionStatus, setQuestionStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   const totalInsurancePaid = data.lineItems.reduce((s, li) => s + li.secondaryPaidLine, 0);
   const totalFullPrice = totalInsurancePaid + data.totalPatientOwes;
