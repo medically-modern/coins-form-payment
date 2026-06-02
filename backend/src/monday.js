@@ -161,6 +161,7 @@ function transformToPaymentData(item) {
 
     const coinsurance = parseFloat(subCol(SUBITEM_COLUMNS.COINSURANCE_AMOUNT)) || 0;
     const deductible = parseFloat(subCol(SUBITEM_COLUMNS.DEDUCTIBLE_AMOUNT)) || 0;
+    const primaryPaidLine = parseFloat(subCol(SUBITEM_COLUMNS.PRIMARY_PAID_LINE)) || 0;
 
     return {
       name: sub.name,
@@ -168,8 +169,8 @@ function transformToPaymentData(item) {
       modifiers: subCol(SUBITEM_COLUMNS.MODIFIERS),
       coinsuranceAmount: coinsurance,
       deductibleAmount: deductible,
-      patientOwes: coinsurance + deductible,
-      secondaryPaidLine: parseFloat(subCol(SUBITEM_COLUMNS.SECONDARY_PAID_LINE)) || 0,
+      patientOwes: coinsurance,
+      secondaryPaidLine: primaryPaidLine,
       quantity: subCol(SUBITEM_COLUMNS.CLAIM_QUANTITY) || subCol(SUBITEM_COLUMNS.ORDER_QUANTITY),
     };
   });

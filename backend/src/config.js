@@ -57,6 +57,7 @@ const SUBITEM_COLUMNS = {
   MODIFIERS:              "dropdown_mm1z7je9",
   PAYMENT_STATUS:         "color_mm35f2e7",
   SECONDARY_PAID_LINE:    "numeric_mm11v6th",
+  PRIMARY_PAID_LINE:      "numeric_mm3az8d",
   COINSURANCE_AMOUNT:     "numeric_mm11aqr1",
   DEDUCTIBLE_AMOUNT:      "numeric_mm1g3nvh",
   ORDER_QUANTITY:          "numeric_mm1czbyg",
