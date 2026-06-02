@@ -74,6 +74,13 @@ async function writeNumber(itemId, columnId, num) {
   });
 }
 
+async function writeLongText(itemId, columnId, text) {
+  await mondayQuery(WRITE_MUTATION, {
+    boardId: SECONDARY_BOARD_ID, itemId, columnId,
+    value: JSON.stringify({ text }),
+  });
+}
+
 async function writeStatusLabel(itemId, columnId, label) {
   await mondayQuery(WRITE_MUTATION, {
     boardId: SECONDARY_BOARD_ID, itemId, columnId,
@@ -257,4 +264,5 @@ module.exports = {
   transformToPaymentData,
   storePaymentLinkInMonday,
   recordPaymentInMonday,
+  writeLongText,
 };

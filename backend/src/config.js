@@ -48,6 +48,7 @@ const COLUMNS = {
   PATIENT_PAID_AMOUNT:    "numeric_mm3q2vpb",
   PATIENT_PAID_DATE:      "date_mm3qxwjs",
   STRIPE_CHARGE_ID:       "text_mm3qsjdf",
+  PATIENT_MESSAGE:        "long_text_mm3yqgyt",
 };
 
 // Subitem column IDs (ERA line items)

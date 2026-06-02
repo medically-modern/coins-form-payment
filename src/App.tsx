@@ -266,6 +266,9 @@ export default function App() {
   // ─── Authenticated: show statement + Pay button ───
   const { jwt, data } = appState as { mode: "authenticated"; jwt: string; data: PatientData };
 
+  const [questionText, setQuestionText] = useState("");
+  const [questionStatus, setQuestionStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
   const totalInsurancePaid = data.lineItems.reduce((s, li) => s + li.secondaryPaidLine, 0);
   const totalFullPrice = totalInsurancePaid + data.totalPatientOwes;
   const insurancePctTotal = totalFullPrice > 0 ? (totalInsurancePaid / totalFullPrice) * 100 : 0;
@@ -293,6 +296,29 @@ export default function App() {
     }
   }
 
+  async function handleSendQuestion() {
+    if (!questionText.trim()) return;
+    setQuestionStatus("sending");
+    try {
+      const res = await fetch(`${API_URL}/api/send-message`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${jwt}`,
+        },
+        body: JSON.stringify({ message: questionText.trim() }),
+      });
+      if (res.ok) {
+        setQuestionStatus("sent");
+        setQuestionText("");
+      } else {
+        setQuestionStatus("error");
+      }
+    } catch {
+      setQuestionStatus("error");
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -310,12 +336,12 @@ export default function App() {
             </p>
 
             {/* Date of service card */}
-            <div className="rounded-xl bg-foreground/[0.04] border border-border px-4 py-3 text-sm text-muted-foreground text-left flex items-start gap-2.5">
-              <svg className="w-4 h-4 mt-0.5 shrink-0 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-              <span>
+            <div className="rounded-xl bg-foreground text-primary-foreground px-4 py-3 text-sm text-left flex items-start gap-2.5">
+              <svg className="w-4 h-4 mt-0.5 shrink-0 opacity-70" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+              <span className="opacity-90">
                 Date of service for your{" "}
-                <span className="font-semibold text-foreground">{itemNames}</span>
-                {" "}re-order: <span className="font-semibold text-foreground">{data.dos || "N/A"}</span>
+                <span className="font-semibold text-white">{itemNames}</span>
+                {" "}re-order: <span className="font-semibold text-white">{data.dos || "N/A"}</span>
               </span>
             </div>
           </div>
@@ -369,7 +395,7 @@ export default function App() {
               Breakdown by Item
             </p>
 
-            <div className="space-y-5">
+            <div className="divide-y divide-border">
               {data.lineItems.map((li, i) => {
                 const insurancePaid = li.secondaryPaidLine;
                 const fullPrice = insurancePaid + li.patientOwes;
@@ -377,7 +403,7 @@ export default function App() {
                 const isFullyCovered = li.patientOwes === 0;
 
                 return (
-                  <div key={i} className="space-y-1.5">
+                  <div key={i} className={`space-y-1.5 ${i > 0 ? "pt-4" : ""} ${i < data.lineItems.length - 1 ? "pb-4" : ""}`}>
                     <div className="flex items-baseline justify-between">
                       <div>
                         <p className="text-sm font-semibold text-foreground">{li.name}</p>
@@ -421,16 +447,54 @@ export default function App() {
         {data.totalPatientOwes > 0 && (
           <button
             onClick={handlePay}
-            className="w-full mt-5 rounded-xl bg-primary py-3.5 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+            className="w-full mt-5 rounded-full bg-primary py-3.5 text-base font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
           >
             Pay {fmt(data.totalPatientOwes)}
           </button>
         )}
 
-        <p className="text-[11px] text-center text-muted-foreground leading-relaxed mt-4">
-          Secure payment powered by Stripe. HSA/FSA cards accepted.<br />
-          A receipt will be provided after payment.
-        </p>
+        {/* Footer text */}
+        <div className="text-center mt-4 space-y-1">
+          <p className="text-[11px] text-muted-foreground flex items-center justify-center gap-1">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            Secure payment by Stripe &middot; HSA/FSA accepted
+          </p>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            A receipt that meets HSA/FSA reimbursement standards will be<br />emailed to you after payment.
+          </p>
+        </div>
+
+        {/* Questions section */}
+        <div className="mt-6 border-t border-border pt-5">
+          <p className="text-sm text-center text-muted-foreground mb-3">Questions about this statement?</p>
+          {questionStatus === "sent" ? (
+            <div className="text-center text-sm text-primary font-medium py-2">
+              Message sent — we'll get back to you shortly.
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={questionText}
+                onChange={(e) => { setQuestionText(e.target.value); if (questionStatus === "error") setQuestionStatus("idle"); }}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSendQuestion(); }}
+                placeholder="Send us a message..."
+                className="flex-1 rounded-xl border border-border bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                disabled={questionStatus === "sending"}
+              />
+              <button
+                onClick={handleSendQuestion}
+                disabled={!questionText.trim() || questionStatus === "sending"}
+                className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center hover:bg-primary/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              </button>
+            </div>
+          )}
+          {questionStatus === "error" && (
+            <p className="text-xs text-red-500 text-center mt-2">Failed to send. Please try again.</p>
+          )}
+        </div>
       </main>
     </div>
   );

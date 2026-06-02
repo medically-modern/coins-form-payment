@@ -6,9 +6,9 @@ const { RedisStore } = require("rate-limit-redis");
 const cookieParser = require("cookie-parser");
 const PDFDocument = require("pdfkit");
 const { verifyPaymentToken, generatePaymentToken, requireAuth, logout, COOKIE_OPTIONS } = require("./auth");
-const { getPatientPaymentData, storePaymentLinkInMonday, recordPaymentInMonday } = require("./monday");
+const { getPatientPaymentData, storePaymentLinkInMonday, recordPaymentInMonday, writeLongText } = require("./monday");
 const { redis, healthCheck, getPaymentToken, getTokenForItem, markTokenPaid, isChargeProcessed, markChargeProcessed, logEvent } = require("./redis");
-const { COMPANY, SECONDARY_BOARD_ID, SEND_INVOICE_GROUP_ID } = require("./config");
+const { COMPANY, COLUMNS, SECONDARY_BOARD_ID, SEND_INVOICE_GROUP_ID } = require("./config");
 const { sendSMS, buildPaymentMessage } = require("./ringcentral");
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
@@ -522,6 +522,33 @@ app.post("/api/create-checkout-session", apiLimiter, requireAuth, async (req, re
   } catch (err) {
     console.error("[stripe] Error creating checkout session:", err.message);
     res.status(500).json({ error: "Unable to initiate payment. Please try again." });
+  }
+});
+
+// POST /api/send-message — Patient sends a question about their statement
+app.post("/api/send-message", apiLimiter, requireAuth, async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message || typeof message !== "string" || !message.trim()) {
+      return res.status(400).json({ error: "Message is required." });
+    }
+
+    const trimmed = message.trim().slice(0, 2000); // cap length
+    const timestamp = new Date().toISOString().split("T")[0];
+    const formatted = `[${timestamp}] ${trimmed}`;
+
+    await writeLongText(req.itemId, COLUMNS.PATIENT_MESSAGE, formatted);
+
+    await logEvent(req.paymentToken, "patient_message_sent", {
+      itemId: req.itemId,
+      messageLength: trimmed.length,
+    });
+
+    console.log(`[api] Patient message saved for item ${req.itemId} (${trimmed.length} chars)`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[api] Error saving patient message:", err.message);
+    res.status(500).json({ error: "Unable to send message. Please try again." });
   }
 });
 
