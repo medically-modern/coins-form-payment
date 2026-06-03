@@ -31,6 +31,7 @@ app.use(helmet({
 
 // ─── CORS ───
 const ALLOWED_ORIGINS = [
+  "https://co-pay.medicallymodern.com",
   "https://medically-modern.github.io",
   process.env.PAYMENT_URL,
   "http://localhost:5173",
