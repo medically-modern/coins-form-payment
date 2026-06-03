@@ -16,12 +16,14 @@ function fmtSplit(n: number): { dollars: string; cents: string } {
   };
 }
 
-/** Medically Modern logo — rounded square with heart */
+/** Medically Modern logo */
 function Logo() {
   return (
-    <span style={{ width: 26, height: 26, borderRadius: 8, background: "linear-gradient(150deg,#4E8A82,#3C6F68)", display: "grid", placeItems: "center", flexShrink: 0 }}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-7-4.6-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.4-7 10-7 10z"/></svg>
-    </span>
+    <img
+      src="https://medicallymodern.com/wp-content/uploads/2025/07/imgi_1_default.png"
+      alt="Medically Modern"
+      style={{ height: 30, width: "auto" }}
+    />
   );
 }
 
@@ -123,7 +125,6 @@ export default function App() {
     <div className="min-h-screen bg-background">
       <header className="flex items-center justify-center gap-2 py-5">
         <Logo />
-        <span style={{ fontWeight: 600, letterSpacing: ".2px", fontSize: 15 }}>Medically Modern</span>
       </header>
       <main className="max-w-md mx-auto px-4 pb-10">
         <div className="rounded-2xl bg-card shadow-sm p-8 text-center space-y-3">
