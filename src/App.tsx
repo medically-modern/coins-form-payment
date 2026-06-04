@@ -310,6 +310,10 @@ export default function App() {
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 18px 64px" }}>
       <div style={{ width: "100%", maxWidth: 430 }}>
         {/* Brand */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 22 }}>
+          <Logo />
+        </div>
+
         {/* Card */}
         <div style={{ background: "#fff", borderRadius: 22, boxShadow: "0 1px 2px rgba(27,42,40,.04), 0 12px 32px rgba(27,42,40,.06)", overflow: "hidden" }}>
           {/* Hero */}
