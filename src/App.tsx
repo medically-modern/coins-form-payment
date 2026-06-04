@@ -422,7 +422,7 @@ export default function App() {
               Secure payment by Stripe &middot; HSA/FSA accepted
             </div>
             <div style={{ textAlign: "center" as const, fontSize: 11, color: "#808E8B", marginTop: 13, lineHeight: 1.5, maxWidth: 340, marginLeft: "auto", marginRight: "auto" }}>
-              A receipt that meets HSA/FSA reimbursement standards will be emailed to you after payment.
+              A receipt that meets HSA/FSA reimbursement standards will be downloadable after payment.
             </div>
 
             {/* Questions — inside card */}
