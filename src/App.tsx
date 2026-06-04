@@ -200,9 +200,8 @@ export default function App() {
 
     return (
       <div className="min-h-screen bg-background">
-        <header className="flex items-center justify-center gap-2 py-5">
+        <header className="flex items-center justify-center py-5">
           <Logo />
-          <span style={{ fontWeight: 600, letterSpacing: ".2px", fontSize: 15 }}>Medically Modern</span>
         </header>
         <main className="max-w-md mx-auto px-4 pb-10">
           <div className="rounded-2xl bg-card shadow-sm p-8 text-center space-y-5">
@@ -311,22 +310,16 @@ export default function App() {
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 18px 64px" }}>
       <div style={{ width: "100%", maxWidth: 430 }}>
         {/* Brand */}
-        <div style={{ display: "flex", alignItems: "center", gap: 9, justifyContent: "center", marginBottom: 22 }}>
-          <Logo />
-          <span style={{ fontWeight: 600, letterSpacing: ".2px", fontSize: 15 }}>Medically Modern</span>
-        </div>
-
         {/* Card */}
         <div style={{ background: "#fff", borderRadius: 22, boxShadow: "0 1px 2px rgba(27,42,40,.04), 0 12px 32px rgba(27,42,40,.06)", overflow: "hidden" }}>
           {/* Hero */}
           <div style={{ padding: "30px 28px 26px", textAlign: "center", borderBottom: "1px solid #ECEAE4" }}>
-            <div style={{ fontSize: 14, color: "#7D8C89", marginBottom: 14 }}>
+            <div style={{ fontSize: 14, color: "#5A6B68", marginBottom: 14 }}>
               Hi <b style={{ color: "#1B2A28", fontWeight: 600 }}>{data.name.split(" ")[0]}</b> — here's your statement
             </div>
 
             {/* Reorder card */}
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 9, textAlign: "left", background: "#F7F6F2", border: "1px solid #ECEAE4", borderRadius: 14, padding: "11px 13px", marginBottom: 22, fontSize: 12.5, lineHeight: 1.45, color: "#7D8C89" }}>
-              <svg style={{ width: 15, height: 15, color: "#4E8A82", flexShrink: 0, marginTop: 1 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 9, textAlign: "left", background: "#F7F6F2", border: "1px solid #ECEAE4", borderRadius: 14, padding: "11px 13px", marginBottom: 22, fontSize: 12.5, lineHeight: 1.45, color: "#5A6B68" }}>
               <span>
                 Date of service for your{" "}
                 <b style={{ color: "#1B2A28", fontWeight: 600 }}>{itemNames}</b>
@@ -334,15 +327,15 @@ export default function App() {
               </span>
             </div>
 
-            <div style={{ fontSize: 11, letterSpacing: ".13em", textTransform: "uppercase" as const, color: "#A7B2AF", fontWeight: 600, marginBottom: 6 }}>Your total</div>
+            <div style={{ fontSize: 11, letterSpacing: ".13em", textTransform: "uppercase" as const, color: "#808E8B", fontWeight: 600, marginBottom: 6 }}>Your total</div>
             <div style={{ fontFamily: "'Fraunces',serif", fontWeight: 500, fontSize: 54, lineHeight: 1, letterSpacing: "-.01em", marginBottom: 14 }}>
-              {dollars}<span style={{ fontSize: 30, verticalAlign: "top", color: "#7D8C89" }}>{cents}</span>
+              {dollars}<span style={{ fontSize: 30, verticalAlign: "top" }}>{cents}</span>
             </div>
 
             {/* Covered pill */}
             {totalInsurancePaid > 0 && (
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#E4EFEC", color: "#3C6F68", fontSize: 12.5, fontWeight: 600, padding: "7px 13px", borderRadius: 100 }}>
-                <svg style={{ width: 13, height: 13 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#E4EFEC", color: "#3C6F68", fontSize: 11.5, fontWeight: 600, padding: "7px 13px", borderRadius: 100, whiteSpace: "nowrap" as const }}>
+                <svg style={{ width: 13, height: 13, flexShrink: 0 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
                 {data.primaryPayor || "Insurance"} covered {fmt(totalInsurancePaid)} of your care
               </div>
             )}
@@ -351,21 +344,21 @@ export default function App() {
           {/* Overall coverage bar */}
           <div style={{ padding: "22px 28px 8px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 13, marginBottom: 9 }}>
-              <span style={{ color: "#7D8C89" }}>Total cost of supplies</span>
+              <span style={{ color: "#5A6B68" }}>Total cost of supplies</span>
               <span style={{ fontWeight: 600 }}>{fmt(totalFullPrice)}</span>
             </div>
             <div style={{ height: 9, borderRadius: 100, background: "#EAEDEB", overflow: "hidden", display: "flex" }}>
               <div style={{ height: "100%", background: "linear-gradient(90deg,#4E8A82,#3C6F68)", borderRadius: 100, width: `${insurancePctTotal}%` }} />
             </div>
-            <div style={{ display: "flex", gap: 18, justifyContent: "center", marginTop: 14, fontSize: 12, color: "#7D8C89" }}>
+            <div style={{ display: "flex", gap: 18, justifyContent: "center", marginTop: 14, fontSize: 12, color: "#5A6B68" }}>
               <span><i style={{ width: 9, height: 9, borderRadius: 3, display: "inline-block", marginRight: 6, verticalAlign: "middle", background: "#4E8A82" }} />Insurance paid {fmt(totalInsurancePaid)}</span>
-              <span><i style={{ width: 9, height: 9, borderRadius: 3, display: "inline-block", marginRight: 6, verticalAlign: "middle", background: "#C9D3D0" }} />You pay {fmt(data.totalPatientOwes)}</span>
+              <span><i style={{ width: 9, height: 9, borderRadius: 3, display: "inline-block", marginRight: 6, verticalAlign: "middle", background: "#A0ADAA" }} />You pay {fmt(data.totalPatientOwes)}</span>
             </div>
           </div>
 
           {/* Itemized */}
           <div style={{ padding: "8px 28px 4px" }}>
-            <div style={{ fontSize: 11, letterSpacing: ".13em", textTransform: "uppercase" as const, color: "#A7B2AF", fontWeight: 600, margin: "18px 0 6px" }}>Breakdown by item</div>
+            <div style={{ fontSize: 11, letterSpacing: ".13em", textTransform: "uppercase" as const, color: "#808E8B", fontWeight: 600, margin: "18px 0 6px" }}>Breakdown by item</div>
 
             {data.lineItems.map((li, i) => {
               const insurancePaid = li.secondaryPaidLine;
@@ -378,14 +371,14 @@ export default function App() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
                     <div>
                       <div style={{ fontSize: 15, fontWeight: 600 }}>{li.name}</div>
-                      <div style={{ fontSize: 11, color: "#A7B2AF", marginTop: 2, letterSpacing: ".02em" }}>{li.hcpcCode}{li.modifiers ? ` ${li.modifiers}` : ""}</div>
+                      <div style={{ fontSize: 10.5, color: "#A0ADAA", marginTop: 2, letterSpacing: ".02em", fontWeight: 400 }}>{li.hcpcCode}</div>
                     </div>
                     <div style={{ fontSize: 15, fontWeight: 600, whiteSpace: "nowrap" as const, color: isFullyCovered ? "#4E8A82" : undefined }}>{fmt(li.patientOwes)}</div>
                   </div>
                   <div style={{ height: 6, borderRadius: 100, background: "#EAEDEB", margin: "11px 0 7px", overflow: "hidden" }}>
                     <div style={{ height: "100%", background: "linear-gradient(90deg,#4E8A82,#3C6F68)", borderRadius: 100, width: `${insurancePct}%` }} />
                   </div>
-                  <div style={{ fontSize: 12, color: "#7D8C89" }}>
+                  <div style={{ fontSize: 12, color: "#5A6B68" }}>
                     {isFullyCovered ? (
                       <>Fully covered — insurance paid <b style={{ color: "#4E8A82", fontWeight: 600 }}>{fmt(insurancePaid)}</b></>
                     ) : (
@@ -399,7 +392,7 @@ export default function App() {
 
           {/* Total strip */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 28px", background: "#FAFBFA", borderTop: "1px solid #ECEAE4" }}>
-            <span style={{ fontSize: 14, color: "#7D8C89" }}>Your share of cost</span>
+            <span style={{ fontSize: 14, color: "#5A6B68" }}>Your share of cost</span>
             <span style={{ fontFamily: "'Fraunces',serif", fontSize: 26, fontWeight: 500 }}>{fmt(data.totalPatientOwes)}</span>
           </div>
 
@@ -413,17 +406,17 @@ export default function App() {
                 Pay {fmt(data.totalPatientOwes)}
               </button>
             )}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, marginTop: 14, fontSize: 12, color: "#7D8C89" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, marginTop: 14, fontSize: 12, color: "#5A6B68" }}>
               <svg style={{ width: 13, height: 13 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
               Secure payment by Stripe &middot; HSA/FSA accepted
             </div>
-            <div style={{ textAlign: "center" as const, fontSize: 11, color: "#A7B2AF", marginTop: 13, lineHeight: 1.5, maxWidth: 340, marginLeft: "auto", marginRight: "auto" }}>
+            <div style={{ textAlign: "center" as const, fontSize: 11, color: "#808E8B", marginTop: 13, lineHeight: 1.5, maxWidth: 340, marginLeft: "auto", marginRight: "auto" }}>
               A receipt that meets HSA/FSA reimbursement standards will be emailed to you after payment.
             </div>
 
             {/* Questions — inside card */}
             <div style={{ marginTop: 20, paddingTop: 18, borderTop: "1px solid #ECEAE4" }}>
-              <span style={{ display: "block", fontSize: 12, color: "#7D8C89", marginBottom: 8, textAlign: "center" as const }}>Questions about this statement?</span>
+              <span style={{ display: "block", fontSize: 12, color: "#5A6B68", marginBottom: 8, textAlign: "center" as const }}>Questions about this statement?</span>
               {questionStatus === "sent" ? (
                 <div style={{ textAlign: "center" as const, fontSize: 13, color: "#4E8A82", fontWeight: 600, padding: "8px 0" }}>
                   Message sent — we'll get back to you shortly.
