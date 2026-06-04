@@ -16,6 +16,13 @@ function fmtSplit(n: number): { dollars: string; cents: string } {
   };
 }
 
+/** Format a date string to MM/DD/YYYY */
+function fmtDate(d: string): string {
+  const parsed = new Date(d);
+  if (isNaN(parsed.getTime())) return d;
+  return `${String(parsed.getMonth() + 1).padStart(2, "0")}/${String(parsed.getDate()).padStart(2, "0")}/${parsed.getFullYear()}`;
+}
+
 /** Medically Modern logo */
 function Logo() {
   return (
@@ -327,7 +334,7 @@ export default function App() {
               <span>
                 Date of service for your{" "}
                 <b style={{ color: "#1B2A28", fontWeight: 600 }}>{itemNames}</b>
-                {" "}re-order: <b style={{ color: "#1B2A28", fontWeight: 600 }}>{data.dos || "N/A"}</b>
+                {" "}re-order: <b style={{ color: "#1B2A28", fontWeight: 600 }}>{data.dos ? fmtDate(data.dos) : "N/A"}</b>
               </span>
             </div>
 
