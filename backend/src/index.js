@@ -306,11 +306,14 @@ app.post("/webhook/monday", async (req, res) => {
   }
 
   try {
-    // ─── Idempotent: skip if token already exists ───
+    // ─── Idempotent: if token exists, ensure Monday has the link and return it ───
     const existingToken = await getTokenForItem(itemId);
     if (existingToken) {
-      console.log(`[monday-wh] Item ${itemId} already has a token — skipping`);
-      return res.json({ ok: true, skipped: true, reason: "token exists" });
+      const paymentUrl = process.env.PAYMENT_URL || "https://invoice.medicallymodern.com";
+      const link = `${paymentUrl}?token=${existingToken}`;
+      await storePaymentLinkInMonday(itemId, existingToken, link);
+      console.log(`[monday-wh] Item ${itemId} already has a token — wrote link to Monday`);
+      return res.json({ ok: true, itemId, link, reason: "existing token synced" });
     }
 
     // ─── Verify item exists and has a balance ───
