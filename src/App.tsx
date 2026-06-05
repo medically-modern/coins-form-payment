@@ -23,6 +23,15 @@ function fmtDate(d: string): string {
   return `${String(parsed.getMonth() + 1).padStart(2, "0")}/${String(parsed.getDate()).padStart(2, "0")}/${parsed.getFullYear()}`;
 }
 
+/** Strip suffixes like "Commercial", "Medicare", "Medicaid", etc. to get user-friendly insurance name */
+function friendlyInsurer(raw: string): string {
+  if (!raw) return "Insurance";
+  return raw
+    .replace(/\s*(Commercial|Medicare|Medicaid|Low-Cost|\(JLJ\))\s*/gi, " ")
+    .replace(/\s*A&B\s*/g, " ")
+    .trim() || raw;
+}
+
 /** Medically Modern logo */
 function Logo() {
   return (
@@ -266,7 +275,6 @@ export default function App() {
   const totalInsurancePaid = data.lineItems.reduce((s, li) => s + li.secondaryPaidLine, 0);
   const totalFullPrice = totalInsurancePaid + data.totalPatientOwes;
   const insurancePctTotal = totalFullPrice > 0 ? (totalInsurancePaid / totalFullPrice) * 100 : 0;
-  const itemNames = data.lineItems.map((li) => li.name).join(", ");
   const { dollars, cents } = fmtSplit(data.totalPatientOwes);
 
   async function handlePay() {
@@ -332,9 +340,7 @@ export default function App() {
             {/* Reorder card */}
             <div style={{ display: "flex", alignItems: "flex-start", gap: 9, textAlign: "left", background: "#F7F6F2", border: "1px solid #ECEAE4", borderRadius: 14, padding: "11px 13px", marginBottom: 22, fontSize: 12.5, lineHeight: 1.45, color: "#5A6B68" }}>
               <span>
-                Date of service for your{" "}
-                <b style={{ color: "#1B2A28", fontWeight: 600 }}>{itemNames}</b>
-                {" "}re-order: <b style={{ color: "#1B2A28", fontWeight: 600 }}>{data.dos ? fmtDate(data.dos) : "N/A"}</b>
+                Date of service: <b style={{ color: "#1B2A28", fontWeight: 600 }}>{data.dos ? fmtDate(data.dos) : "N/A"}</b>
               </span>
             </div>
 
@@ -347,15 +353,15 @@ export default function App() {
             {totalInsurancePaid > 0 && (
               <div style={{ display: "inline-flex", alignItems: "center", gap: 7, background: "#E4EFEC", color: "#3C6F68", fontSize: 11.5, fontWeight: 600, padding: "7px 13px", borderRadius: 100, whiteSpace: "nowrap" as const }}>
                 <svg style={{ width: 13, height: 13, flexShrink: 0 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                {data.primaryPayor || "Insurance"} covered {fmt(totalInsurancePaid)} of your care
+                {friendlyInsurer(data.primaryPayor)} covered {fmt(totalInsurancePaid)}
               </div>
             )}
           </div>
 
           {/* Overall coverage bar */}
           <div style={{ padding: "22px 28px 8px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 13, marginBottom: 9 }}>
-              <span style={{ color: "#5A6B68" }}>Total cost of supplies</span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", fontSize: 15, marginBottom: 9 }}>
+              <span style={{ color: "#5A6B68" }}>Total cost</span>
               <span style={{ fontWeight: 600 }}>{fmt(totalFullPrice)}</span>
             </div>
             <div style={{ height: 9, borderRadius: 100, background: "#EAEDEB", overflow: "hidden", display: "flex" }}>
@@ -389,7 +395,7 @@ export default function App() {
                   <div style={{ height: 6, borderRadius: 100, background: "#EAEDEB", margin: "11px 0 7px", overflow: "hidden" }}>
                     <div style={{ height: "100%", background: "linear-gradient(90deg,#4E8A82,#3C6F68)", borderRadius: 100, width: `${insurancePct}%` }} />
                   </div>
-                  <div style={{ fontSize: 12, color: "#5A6B68" }}>
+                  <div style={{ fontSize: 13.5, color: "#5A6B68" }}>
                     {isFullyCovered ? (
                       <>Fully covered — insurance paid <b style={{ color: "#4E8A82", fontWeight: 600 }}>{fmt(insurancePaid)}</b></>
                     ) : (
