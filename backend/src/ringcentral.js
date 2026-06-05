@@ -117,9 +117,36 @@ function buildFollowUpMessage(patientName, paymentLink) {
   ].join("\n");
 }
 
+// ─── Check message delivery status ───
+
+async function getMessageStatus(messageId) {
+  if (!messageId) return "Unknown";
+
+  const token = await getAccessToken();
+
+  const res = await fetch(`${RC_SERVER}/restapi/v1.0/account/~/extension/~/message-store/${messageId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    if (res.status === 401) {
+      cachedToken = null;
+      tokenExpiresAt = 0;
+    }
+    throw new Error(`RC status check failed (${res.status})`);
+  }
+
+  const data = await res.json();
+  // messageStatus: "Queued", "Sent", "Delivered", "DeliveryFailed", "SendingFailed"
+  return data.messageStatus || "Unknown";
+}
+
 module.exports = {
   sendSMS,
   normalizePhone,
   buildPaymentMessage,
   buildFollowUpMessage,
+  getMessageStatus,
 };

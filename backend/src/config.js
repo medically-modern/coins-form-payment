@@ -49,6 +49,7 @@ const COLUMNS = {
   PATIENT_PAID_DATE:      "date_mm3qxwjs",
   STRIPE_CHARGE_ID:       "text_mm3qsjdf",
   PATIENT_MESSAGE:        "long_text_mm3yqgyt",
+  SMS_STATUS:             "color_mm41nfw4",
 };
 
 // Subitem column IDs (ERA line items)

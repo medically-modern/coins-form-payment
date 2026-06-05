@@ -10,6 +10,7 @@ const { getPatientPaymentData, storePaymentLinkInMonday, recordPaymentInMonday, 
 const { redis, healthCheck, getPaymentToken, getTokenForItem, markTokenPaid, isChargeProcessed, markChargeProcessed, logEvent } = require("./redis");
 const { COMPANY, COLUMNS, SECONDARY_BOARD_ID, SEND_INVOICE_GROUP_ID } = require("./config");
 const { sendSMS, buildPaymentMessage, buildFollowUpMessage } = require("./ringcentral");
+const { enqueueSMS } = require("./smsQueue");
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
@@ -427,26 +428,21 @@ app.post("/webhook/monday/send-text", async (req, res) => {
     const paymentUrl = process.env.PAYMENT_URL || "https://medically-modern.github.io/coins-form-payment";
     const link = `${paymentUrl}?token=${token}`;
 
-    // ─── Send SMS ───
+    // ─── Build message and enqueue ───
     const message = isFollowUp
       ? buildFollowUpMessage(patientData.name, link)
       : buildPaymentMessage(patientData.name, link, patientData.totalPatientOwes);
-    await sendSMS(patientData.phone, message);
 
-    // ─── Mark as sent (90-day TTL) ───
-    await redis.set(smsSentKey, new Date().toISOString(), "EX", 86400 * 90);
-
-    // ─── Write sent date to Monday ───
-    const { writeDate } = require("./monday");
-    const today = new Date().toISOString().split("T")[0];
-    await writeDate(itemId, COLUMNS.PAY_LINK_SENT_DATE, today);
-
-    await logEvent(token, "sms_sent", {
+    await enqueueSMS({
       itemId,
-      phone: patientData.phone.slice(-4), // log last 4 only
+      phone: patientData.phone,
+      message,
+      patientName: patientData.name,
+      paymentToken: token,
+      textType,
     });
 
-    console.log(`[send-text] SMS sent for item ${itemId} (${patientData.name})`);
+    console.log(`[send-text] ${textType} text queued for item ${itemId} (${patientData.name})`);
 
     res.json({
       ok: true,
