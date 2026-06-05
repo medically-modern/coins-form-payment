@@ -111,9 +111,11 @@ async function processQueue() {
         // Write "Sent" to Monday
         await writeSmsStatus(job.itemId, "Sent");
 
-        // Mark as sent in Redis (dedup)
-        const smsSentKey = `pay-secondary:sms-sent:${job.itemId}:${job.textType}`;
-        await redis.set(smsSentKey, new Date().toISOString(), "EX", 86400 * 90);
+        // Mark as sent in Redis (dedup) — only for initial texts
+        if (job.textType !== "followup") {
+          const smsSentKey = `pay-secondary:sms-sent:${job.itemId}:${job.textType}`;
+          await redis.set(smsSentKey, new Date().toISOString(), "EX", 86400 * 90);
+        }
 
         // Write sent date to Monday
         const today = new Date().toISOString().split("T")[0];
