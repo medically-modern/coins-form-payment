@@ -367,7 +367,7 @@ export default function App() {
             <div style={{ height: 9, borderRadius: 100, background: "#EAEDEB", overflow: "hidden", display: "flex" }}>
               <div style={{ height: "100%", background: "linear-gradient(90deg,#4E8A82,#3C6F68)", borderRadius: 100, width: `${insurancePctTotal}%` }} />
             </div>
-            <div style={{ display: "flex", gap: 18, justifyContent: "center", marginTop: 14, fontSize: 12, color: "#5A6B68" }}>
+            <div style={{ display: "flex", gap: 18, justifyContent: "center", marginTop: 14, fontSize: 14, color: "#5A6B68" }}>
               <span><i style={{ width: 9, height: 9, borderRadius: 3, display: "inline-block", marginRight: 6, verticalAlign: "middle", background: "#4E8A82" }} />Insurance paid {fmt(totalInsurancePaid)}</span>
               <span><i style={{ width: 9, height: 9, borderRadius: 3, display: "inline-block", marginRight: 6, verticalAlign: "middle", background: "#A0ADAA" }} />You pay {fmt(data.totalPatientOwes)}</span>
             </div>
