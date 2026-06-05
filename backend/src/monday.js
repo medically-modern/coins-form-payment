@@ -161,6 +161,8 @@ function transformToPaymentData(item) {
 
     const coinsurance = parseFloat(subCol(SUBITEM_COLUMNS.COINSURANCE_AMOUNT)) || 0;
     const deductible = parseFloat(subCol(SUBITEM_COLUMNS.DEDUCTIBLE_AMOUNT)) || 0;
+    const copay = parseFloat(subCol(SUBITEM_COLUMNS.COPAY_AMOUNT)) || 0;
+    const prAmount = parseFloat(subCol(SUBITEM_COLUMNS.PR_AMOUNT)) || 0;
     const primaryPaidLine = parseFloat(subCol(SUBITEM_COLUMNS.PRIMARY_PAID_LINE)) || 0;
 
     return {
@@ -169,14 +171,35 @@ function transformToPaymentData(item) {
       modifiers: subCol(SUBITEM_COLUMNS.MODIFIERS),
       coinsuranceAmount: coinsurance,
       deductibleAmount: deductible,
-      patientOwes: coinsurance,
+      copayAmount: copay,
+      patientOwes: prAmount,
       secondaryPaidLine: primaryPaidLine,
       quantity: subCol(SUBITEM_COLUMNS.CLAIM_QUANTITY) || subCol(SUBITEM_COLUMNS.ORDER_QUANTITY),
     };
   });
 
-  // Total patient owes = sum of coinsurance + deductible across line items
-  const totalPatientOwes = lineItems.reduce((sum, li) => sum + li.patientOwes, 0);
+  // Authoritative total from parent Primary PR Amount (captures claim-level CAS adjustments)
+  const parentPrAmount = parseFloat(col(COLUMNS.PRIMARY_PR_AMOUNT)) || 0;
+  const subitemPrSum = lineItems.reduce((sum, li) => sum + li.patientOwes, 0);
+  const claimLevelGap = Math.max(0, parentPrAmount - subitemPrSum);
+
+  // If there's a claim-level gap (e.g. Medicare claim-level deductible), add a synthetic line item
+  if (claimLevelGap > 0.01) {
+    lineItems.push({
+      name: "Deductible (claim level)",
+      hcpcCode: "",
+      modifiers: "",
+      coinsuranceAmount: 0,
+      deductibleAmount: claimLevelGap,
+      copayAmount: 0,
+      patientOwes: claimLevelGap,
+      secondaryPaidLine: 0,
+      quantity: "",
+    });
+  }
+
+  // Total = parent PR amount (authoritative), NOT subitem sum
+  const totalPatientOwes = parentPrAmount;
 
   // Check if already paid
   const stripeChargeId = col(COLUMNS.STRIPE_CHARGE_ID);
