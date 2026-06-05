@@ -235,9 +235,8 @@ async function storePaymentLinkInMonday(itemId, token, link) {
   await Promise.all([
     writeText(safeId, COLUMNS.PAY_LINK_TOKEN, token),
     writeText(safeId, COLUMNS.PAY_LINK_URL, link),
-    writeDate(safeId, COLUMNS.PAY_LINK_SENT_DATE, today),
-    // NOTE: intentionally NOT setting Secondary Status here.
-    // Status is flipped manually to "Sent to Patient" to trigger SMS.
+    // NOTE: intentionally NOT setting Secondary Status or Sent Date here.
+    // Both are written when status is manually flipped to "Sent to Patient".
   ]);
 
   console.log(`[monday] Payment link stored for item ${itemId}`);
@@ -267,4 +266,5 @@ module.exports = {
   storePaymentLinkInMonday,
   recordPaymentInMonday,
   writeLongText,
+  writeDate,
 };

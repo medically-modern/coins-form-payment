@@ -421,6 +421,11 @@ app.post("/webhook/monday/send-text", async (req, res) => {
     // ─── Mark as sent (90-day TTL) ───
     await redis.set(smsSentKey, new Date().toISOString(), "EX", 86400 * 90);
 
+    // ─── Write sent date to Monday ───
+    const { writeDate } = require("./monday");
+    const today = new Date().toISOString().split("T")[0];
+    await writeDate(itemId, COLUMNS.PAY_LINK_SENT_DATE, today);
+
     await logEvent(token, "sms_sent", {
       itemId,
       phone: patientData.phone.slice(-4), // log last 4 only
