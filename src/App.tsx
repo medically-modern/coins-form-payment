@@ -16,11 +16,11 @@ function fmtSplit(n: number): { dollars: string; cents: string } {
   };
 }
 
-/** Format a date string to MM/DD/YYYY */
+/** Format a date string (YYYY-MM-DD) to MM/DD/YYYY — avoids timezone shift */
 function fmtDate(d: string): string {
-  const parsed = new Date(d);
-  if (isNaN(parsed.getTime())) return d;
-  return `${String(parsed.getMonth() + 1).padStart(2, "0")}/${String(parsed.getDate()).padStart(2, "0")}/${parsed.getFullYear()}`;
+  const parts = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!parts) return d;
+  return `${parts[2]}/${parts[3]}/${parts[1]}`;
 }
 
 /** Strip suffixes like "Commercial", "Medicare", "Medicaid", etc. to get user-friendly insurance name */
