@@ -485,7 +485,7 @@ app.post("/api/create-checkout-session", apiLimiter, requireAuth, async (req, re
         price_data: {
           currency: "usd",
           product_data: {
-            name: `DME Co-Insurance — ${data.name}`,
+            name: data.name,
             description: data.dos ? `Date of Service: ${data.dos}` : undefined,
           },
           unit_amount: amountCents,
