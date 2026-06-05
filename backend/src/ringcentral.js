@@ -114,8 +114,7 @@ function buildFollowUpMessage(patientName, paymentLink) {
     `Hi ${firstName}, this is Medically Modern. This is a friendly reminder that you have an outstanding balance after your insurance processed your claim. View your statement below.`,
     ``,
     `${paymentLink}`,
-  ].join("
-");
+  ].join("\n");
 }
 
 module.exports = {
