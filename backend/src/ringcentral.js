@@ -108,8 +108,19 @@ function buildPaymentMessage(patientName, paymentLink, amount) {
   ].join("\n");
 }
 
+function buildFollowUpMessage(patientName, paymentLink) {
+  const firstName = patientName.split(/[\s,]+/)[0];
+  return [
+    `Hi ${firstName}, this is Medically Modern. This is a friendly reminder that you have an outstanding balance after your insurance processed your claim. View your statement below.`,
+    ``,
+    `${paymentLink}`,
+  ].join("
+");
+}
+
 module.exports = {
   sendSMS,
   normalizePhone,
   buildPaymentMessage,
+  buildFollowUpMessage,
 };

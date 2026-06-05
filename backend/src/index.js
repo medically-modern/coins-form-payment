@@ -9,7 +9,7 @@ const { verifyPaymentToken, generatePaymentToken, requireAuth, logout, COOKIE_OP
 const { getPatientPaymentData, storePaymentLinkInMonday, recordPaymentInMonday, writeLongText } = require("./monday");
 const { redis, healthCheck, getPaymentToken, getTokenForItem, markTokenPaid, isChargeProcessed, markChargeProcessed, logEvent } = require("./redis");
 const { COMPANY, COLUMNS, SECONDARY_BOARD_ID, SEND_INVOICE_GROUP_ID } = require("./config");
-const { sendSMS, buildPaymentMessage } = require("./ringcentral");
+const { sendSMS, buildPaymentMessage, buildFollowUpMessage } = require("./ringcentral");
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
@@ -351,7 +351,9 @@ app.post("/webhook/monday", async (req, res) => {
 // MONDAY WEBHOOK — send payment text via RingCentral
 // ═══════════════════════════════════════════════════════
 //
-// Monday automation: "When Secondary Status changes to 'Sent to Patient' → send webhook"
+// Monday automations:
+//   1. "When Secondary Status changes to 'Sent to Patient'" → initial text
+//   2. "When Secondary Status changes to 'Follow Up'" → follow-up reminder
 // Looks up item → gets phone + pay link → sends SMS via RingCentral.
 
 app.post("/webhook/monday/send-text", async (req, res) => {
@@ -374,12 +376,17 @@ app.post("/webhook/monday/send-text", async (req, res) => {
   }
 
   try {
-    // ─── Idempotent: check if we already sent a text for this item ───
-    const smsSentKey = `pay-secondary:sms-sent:${itemId}`;
+    // ─── Detect status type from event payload ───
+    const statusLabel = event.value?.label?.text || event.value?.label || "";
+    const isFollowUp = statusLabel.toLowerCase().includes("follow up");
+    const textType = isFollowUp ? "followup" : "initial";
+
+    // ─── Idempotent: check per status type ───
+    const smsSentKey = `pay-secondary:sms-sent:${itemId}:${textType}`;
     const alreadySent = await redis.get(smsSentKey);
     if (alreadySent) {
-      console.log(`[send-text] Item ${itemId} already texted — skipping`);
-      return res.json({ ok: true, skipped: true, reason: "already sent" });
+      console.log(`[send-text] Item ${itemId} already sent ${textType} text — skipping`);
+      return res.json({ ok: true, skipped: true, reason: `${textType} already sent` });
     }
 
     // ─── Get patient data ───
@@ -415,7 +422,9 @@ app.post("/webhook/monday/send-text", async (req, res) => {
     const link = `${paymentUrl}?token=${token}`;
 
     // ─── Send SMS ───
-    const message = buildPaymentMessage(patientData.name, link, patientData.totalPatientOwes);
+    const message = isFollowUp
+      ? buildFollowUpMessage(patientData.name, link)
+      : buildPaymentMessage(patientData.name, link, patientData.totalPatientOwes);
     await sendSMS(patientData.phone, message);
 
     // ─── Mark as sent (90-day TTL) ───
