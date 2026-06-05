@@ -377,8 +377,14 @@ app.post("/webhook/monday/send-text", async (req, res) => {
 
   try {
     // ─── Detect status type from event payload ───
-    const statusLabel = event.value?.label?.text || event.value?.label || "";
-    const isFollowUp = statusLabel.toLowerCase().includes("follow up");
+    // Monday sends status changes in various formats depending on automation type
+    const statusLabel = event.value?.label?.text
+      || event.value?.label
+      || event.columnValues?.[COLUMNS.SECONDARY_STATUS]?.label?.text
+      || event.columnValues?.[COLUMNS.SECONDARY_STATUS]?.label
+      || "";
+    console.log(`[send-text] Status label detected: "${statusLabel}" (raw value: ${JSON.stringify(event.value)})`);
+    const isFollowUp = typeof statusLabel === "string" && statusLabel.toLowerCase().includes("follow up");
     const textType = isFollowUp ? "followup" : "initial";
 
     // ─── Idempotent: check per status type ───
