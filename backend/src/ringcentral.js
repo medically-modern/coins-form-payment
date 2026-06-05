@@ -102,7 +102,7 @@ function buildPaymentMessage(patientName, paymentLink, amount) {
   const firstName = patientName.split(/[\s,]+/)[0];
   const amountStr = amount ? ` of $${parseFloat(amount).toFixed(2)}` : "";
   return [
-    `Hi ${firstName}, this is Medically Modern. You have a patient responsibility balance from your order. View your statement below.`,
+    `Hi ${firstName}, this is Medically Modern. Your insurance has processed your claim and there is a remaining balance. View your statement below.`,
     ``,
     `${paymentLink}`,
   ].join("\n");
