@@ -102,9 +102,7 @@ function buildPaymentMessage(patientName, paymentLink, amount) {
   const firstName = patientName.split(/[\s,]+/)[0];
   const amountStr = amount ? ` of $${parseFloat(amount).toFixed(2)}` : "";
   return [
-    `Hi ${firstName}, this is Mid-Island Medical Supply. You have a co-insurance balance. View your statement and pay securely below.`,
-    ``,
-    `Questions? Call us at (347) 503-7148.`,
+    `Hi ${firstName}, this is Medically Modern. You have a patient responsibility balance from your order. View your statement below.`,
     ``,
     `${paymentLink}`,
   ].join("\n");
