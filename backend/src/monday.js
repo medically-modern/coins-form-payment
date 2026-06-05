@@ -236,7 +236,8 @@ async function storePaymentLinkInMonday(itemId, token, link) {
     writeText(safeId, COLUMNS.PAY_LINK_TOKEN, token),
     writeText(safeId, COLUMNS.PAY_LINK_URL, link),
     writeDate(safeId, COLUMNS.PAY_LINK_SENT_DATE, today),
-    writeStatusLabel(safeId, COLUMNS.SECONDARY_STATUS, "Sent to Patient"),
+    // NOTE: intentionally NOT setting Secondary Status here.
+    // Status is flipped manually to "Sent to Patient" to trigger SMS.
   ]);
 
   console.log(`[monday] Payment link stored for item ${itemId}`);
