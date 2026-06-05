@@ -338,7 +338,7 @@ export default function App() {
             </div>
 
             {/* Reorder card */}
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 9, textAlign: "left", background: "#F7F6F2", border: "1px solid #ECEAE4", borderRadius: 14, padding: "11px 13px", marginBottom: 22, fontSize: 12.5, lineHeight: 1.45, color: "#5A6B68" }}>
+            <div style={{ display: "flex", justifyContent: "center", background: "#F7F6F2", border: "1px solid #ECEAE4", borderRadius: 14, padding: "11px 13px", marginBottom: 22, fontSize: 12.5, lineHeight: 1.45, color: "#5A6B68" }}>
               <span>
                 Date of service: <b style={{ color: "#1B2A28", fontWeight: 600 }}>{data.dos ? fmtDate(data.dos) : "N/A"}</b>
               </span>
