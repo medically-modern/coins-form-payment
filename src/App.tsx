@@ -433,7 +433,7 @@ export default function App() {
 
             {/* Questions — inside card */}
             <div style={{ marginTop: 20, paddingTop: 18, borderTop: "1px solid #ECEAE4" }}>
-              <span style={{ display: "block", fontSize: 12, color: "#5A6B68", marginBottom: 8, textAlign: "center" as const }}>Questions about this statement?</span>
+              <span style={{ display: "block", fontSize: 12, color: "#5A6B68", fontWeight: 600, marginBottom: 8, textAlign: "center" as const }}>Questions about this statement?</span>
               {questionStatus === "sent" ? (
                 <div style={{ textAlign: "center" as const, fontSize: 13, color: "#4E8A82", fontWeight: 600, padding: "8px 0" }}>
                   Message sent — we'll get back to you shortly.
