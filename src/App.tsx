@@ -276,6 +276,7 @@ export default function App() {
   const totalFullPrice = totalInsurancePaid + data.totalPatientOwes;
   const insurancePctTotal = totalFullPrice > 0 ? (totalInsurancePaid / totalFullPrice) * 100 : 0;
   const { dollars, cents } = fmtSplit(data.totalPatientOwes);
+  const totalDeductible = data.lineItems.reduce((s, li) => s + (li.deductibleAmount || 0), 0);
 
   async function handlePay() {
     setAppState({ mode: "paying" } as any);
@@ -412,6 +413,13 @@ export default function App() {
             <span style={{ fontSize: 14, color: "#5A6B68" }}>Your share of cost</span>
             <span style={{ fontFamily: "'Fraunces',serif", fontSize: 26, fontWeight: 500 }}>{fmt(data.totalPatientOwes)}</span>
           </div>
+
+          {/* Deductible note */}
+          {totalDeductible > 0 && (
+            <div style={{ padding: "0 28px 16px", background: "#FAFBFA", textAlign: "center" as const, fontSize: 12, color: "#808E8B" }}>
+              Includes {fmt(totalDeductible)} toward your annual deductible
+            </div>
+          )}
 
           {/* Pay area — inside card */}
           <div style={{ padding: "20px 28px 26px" }}>
