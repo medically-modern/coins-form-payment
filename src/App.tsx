@@ -82,6 +82,7 @@ export default function App() {
   const [appState, setAppState] = useState<AppState>({ mode: "loading" });
   const [questionText, setQuestionText] = useState("");
   const [questionStatus, setQuestionStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [showDeductibleInfo, setShowDeductibleInfo] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -103,6 +104,13 @@ export default function App() {
 
     verifyAndLoad(token, false);
   }, []);
+
+  useEffect(() => {
+    if (!showDeductibleInfo) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setShowDeductibleInfo(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showDeductibleInfo]);
 
   async function verifyAndLoad(token: string, isReturn: boolean) {
     try {
@@ -416,8 +424,15 @@ export default function App() {
 
           {/* Deductible note */}
           {totalDeductible > 0 && (
-            <div style={{ padding: "0 28px 16px", background: "#FAFBFA", textAlign: "center" as const, fontSize: 12, color: "#808E8B" }}>
-              Includes {fmt(totalDeductible)} toward your annual deductible
+            <div style={{ padding: "13px 28px 16px", background: "#FAFBFA", borderTop: "1px solid #ECEAE4", textAlign: "center" as const, fontSize: 13.5, color: "#5A6B68", lineHeight: 1.45 }}>
+              Includes <b style={{ color: "#1B2A28", fontWeight: 600 }}>{fmt(totalDeductible)}</b> toward your{" "}
+              <button
+                type="button"
+                onClick={() => setShowDeductibleInfo(true)}
+                style={{ background: "none", border: "none", padding: 0, font: "inherit", color: "#2563EB", textDecoration: "underline", textUnderlineOffset: "2px", cursor: "pointer" }}
+              >
+                annual deductible
+              </button>
             </div>
           )}
 
@@ -473,6 +488,32 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* Annual deductible explainer modal */}
+      {showDeductibleInfo && (
+        <div
+          onClick={() => setShowDeductibleInfo(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(27,42,40,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, zIndex: 50 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ position: "relative", background: "#fff", borderRadius: 18, maxWidth: 360, width: "100%", padding: "26px 24px 24px", boxShadow: "0 16px 44px rgba(27,42,40,.28)" }}
+          >
+            <button
+              type="button"
+              onClick={() => setShowDeductibleInfo(false)}
+              aria-label="Close"
+              style={{ position: "absolute", top: 12, right: 12, width: 30, height: 30, border: "none", background: "#F2F1EC", borderRadius: 9, cursor: "pointer", color: "#5A6B68", display: "grid", placeItems: "center" }}
+            >
+              <svg style={{ width: 15, height: 15 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+            <div style={{ fontFamily: "'Fraunces',serif", fontSize: 20, fontWeight: 500, color: "#1B2A28", marginBottom: 8, paddingRight: 28 }}>What’s an annual deductible?</div>
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: "#5A6B68" }}>
+              It’s the amount you pay for care each year before your insurance starts to chip in. Once you’ve paid that much, your plan covers more of the cost for the rest of the year.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
