@@ -27,6 +27,10 @@ function fmtDate(d: string): string {
  *  Keys are matched case-insensitively against the trimmed raw payer name. */
 const FRIENDLY_INSURER_OVERRIDES: Record<string, string> = {
   "horizon bcbs": "Anthem / BCBS",
+  "bcbs tn": "Anthem / BCBS",
+  "bcbs fl": "Anthem / BCBS",
+  "bcbs wy": "Anthem / BCBS",
+  "bcbs wyoming": "Anthem / BCBS",
 };
 
 /** Strip suffixes like "Commercial", "Medicare", "Medicaid", etc. to get user-friendly insurance name */
