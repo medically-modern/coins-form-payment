@@ -23,9 +23,17 @@ function fmtDate(d: string): string {
   return `${parts[2]}/${parts[3]}/${parts[1]}`;
 }
 
+/** Explicit patient-facing display names, checked before suffix-stripping.
+ *  Keys are matched case-insensitively against the trimmed raw payer name. */
+const FRIENDLY_INSURER_OVERRIDES: Record<string, string> = {
+  "horizon bcbs": "Anthem / BCBS",
+};
+
 /** Strip suffixes like "Commercial", "Medicare", "Medicaid", etc. to get user-friendly insurance name */
 function friendlyInsurer(raw: string): string {
   if (!raw) return "Insurance";
+  const override = FRIENDLY_INSURER_OVERRIDES[raw.trim().toLowerCase()];
+  if (override) return override;
   return raw
     .replace(/\s*(Commercial|Medicare|Medicaid|Low-Cost|\(JLJ\))\s*/gi, " ")
     .replace(/\s*A&B\s*/g, " ")
