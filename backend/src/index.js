@@ -93,12 +93,16 @@ app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (re
     }
 
     const amountPaid = (session.amount_total || 0) / 100; // cents → dollars
+    // Email the patient entered at Stripe Checkout (collected by default), so it's
+    // already on the session object — no extra Stripe API call needed at write-time.
+    const customerEmail = session.customer_details?.email || session.customer_email || null;
 
     try {
-      // Write to Monday: amount, date, charge ID, status → "Review"
+      // Write to Monday: amount, date, charge ID, email, status → "Review"
       await recordPaymentInMonday(itemId, {
         amount: amountPaid,
         stripeChargeId: chargeId || session.id,
+        email: customerEmail,
       });
 
       // Mark token as paid in Redis

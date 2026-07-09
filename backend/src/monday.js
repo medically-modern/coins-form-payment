@@ -88,6 +88,14 @@ async function writeStatusLabel(itemId, columnId, label) {
   });
 }
 
+async function writeEmail(itemId, columnId, email) {
+  // Monday email columns expect { email, text } — text is the display label.
+  await mondayQuery(WRITE_MUTATION, {
+    boardId: SECONDARY_BOARD_ID, itemId, columnId,
+    value: JSON.stringify({ email, text: email }),
+  });
+}
+
 // ─── Get item by Monday item ID (with subitems for ERA line items) ───
 
 async function getItemById(itemId) {
@@ -267,18 +275,25 @@ async function storePaymentLinkInMonday(itemId, token, link) {
 
 // ─── Record payment in Monday (from Stripe webhook) ───
 
-async function recordPaymentInMonday(itemId, { amount, stripeChargeId }) {
+async function recordPaymentInMonday(itemId, { amount, stripeChargeId, email }) {
   const safeId = validateNumericId(itemId, "item ID");
   const today = new Date().toISOString().split("T")[0];
 
-  await Promise.all([
+  const writes = [
     writeNumber(safeId, COLUMNS.PATIENT_PAID_AMOUNT, amount),
     writeDate(safeId, COLUMNS.PATIENT_PAID_DATE, today),
     writeText(safeId, COLUMNS.STRIPE_CHARGE_ID, stripeChargeId),
     writeStatusLabel(safeId, COLUMNS.SECONDARY_STATUS, "Review"),
-  ]);
+  ];
 
-  console.log(`[monday] Payment recorded for item ${itemId}: $${amount}, charge=${stripeChargeId}`);
+  // Patient's Stripe email — write only when present so we never blank the column.
+  if (email) {
+    writes.push(writeEmail(safeId, COLUMNS.PATIENT_STRIPE_EMAIL, email));
+  }
+
+  await Promise.all(writes);
+
+  console.log(`[monday] Payment recorded for item ${itemId}: $${amount}, charge=${stripeChargeId}${email ? `, email=${email}` : ""}`);
 }
 
 module.exports = {
@@ -290,4 +305,5 @@ module.exports = {
   recordPaymentInMonday,
   writeLongText,
   writeDate,
+  writeEmail,
 };
