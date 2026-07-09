@@ -293,7 +293,7 @@ async function recordPaymentInMonday(itemId, { amount, stripeChargeId, email }) 
 
   await Promise.all(writes);
 
-  console.log(`[monday] Payment recorded for item ${itemId}: $${amount}, charge=${stripeChargeId}${email ? `, email=${email}` : ""}`);
+  console.log(`[monday] Payment recorded for item ${itemId}: $${amount}, charge=${stripeChargeId}${email ? ", email=<redacted>" : ""}`);
 }
 
 module.exports = {
