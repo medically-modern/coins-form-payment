@@ -51,6 +51,16 @@ async function getTokenForItem(itemId) {
   return redis.get(`${ITEM_PREFIX}${itemId}`);
 }
 
+// Sliding expiration — refresh the TTL on both the token and its reverse
+// lookup so a link that's still being used (clicked, reminded) never ages
+// out of the cache. Safe to call when a key is missing (expire is a no-op).
+async function refreshPaymentTokenTTL(token, itemId, ttl) {
+  await Promise.all([
+    redis.expire(`${TOKEN_PREFIX}${token}`, ttl),
+    itemId ? redis.expire(`${ITEM_PREFIX}${itemId}`, ttl) : null,
+  ]);
+}
+
 async function markTokenPaid(token, { stripeSessionId, stripeChargeId, paidAmount }) {
   const raw = await redis.get(`${TOKEN_PREFIX}${token}`);
   if (!raw) return false;
@@ -126,7 +136,7 @@ async function healthCheck() {
 
 module.exports = {
   redis,
-  storePaymentToken, getPaymentToken, getTokenForItem, markTokenPaid,
+  storePaymentToken, getPaymentToken, getTokenForItem, refreshPaymentTokenTTL, markTokenPaid,
   isChargeProcessed, markChargeProcessed,
   logEvent,
   checkAuthRateLimit,

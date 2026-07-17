@@ -2,10 +2,11 @@ const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const { AUTH, SECONDARY_BOARD_ID } = require("./config");
 const {
-  storePaymentToken, getPaymentToken, getTokenForItem,
+  storePaymentToken, getPaymentToken, getTokenForItem, refreshPaymentTokenTTL,
   checkAuthRateLimit, blacklistSession, isSessionBlacklisted,
   logEvent,
 } = require("./redis");
+const { findItemByToken } = require("./monday");
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -37,7 +38,8 @@ async function generatePaymentToken(itemId) {
 }
 
 async function verifyPaymentToken(token) {
-  if (!token || token.length !== AUTH.TOKEN_BYTES * 2) {
+  const expectedLen = AUTH.TOKEN_BYTES * 2;
+  if (!token || token.length !== expectedLen || !/^[a-f0-9]+$/i.test(token)) {
     return { error: "Invalid link", status: 400 };
   }
 
@@ -47,12 +49,38 @@ async function verifyPaymentToken(token) {
     return { error: "Too many attempts. Please try again later.", status: 429 };
   }
 
-  const tokenData = await getPaymentToken(token);
+  let tokenData = await getPaymentToken(token);
+
+  // ─── Durability fallback: recover from Monday on a Redis cache-miss ───
+  // Redis is only a cache — tokens carry a 30-day TTL and can also be evicted
+  // under memory pressure or lost on restart. Monday is the durable store: it
+  // keeps the token in the PAY_LINK_TOKEN column for the life of the item. So
+  // rather than tell the patient the link is dead, look the token up in Monday
+  // and re-store it in Redis. This revives links still sitting in already-sent
+  // texts, and makes every link last as long as its Monday item exists.
+  if (!tokenData) {
+    try {
+      const item = await findItemByToken(token);
+      if (item) {
+        await storePaymentToken(token, item.id, SECONDARY_BOARD_ID, AUTH.TOKEN_TTL);
+        tokenData = { mondayItemId: String(item.id), boardId: String(SECONDARY_BOARD_ID) };
+        await logEvent(token, "token_recovered_from_monday", { itemId: item.id });
+        console.log(`[auth] Token recovered from Monday for item ${item.id} — re-stored in Redis`);
+      }
+    } catch (err) {
+      console.error("[auth] Monday fallback lookup failed:", err.message);
+    }
+  }
+
   if (!tokenData) {
     return { error: "This link has expired or is invalid. Please contact us for a new one.", status: 401 };
   }
 
   const itemId = tokenData.mondayItemId || tokenData;
+
+  // Sliding expiration — keep an actively-used link warm so it doesn't age out.
+  await refreshPaymentTokenTTL(token, itemId, AUTH.TOKEN_TTL);
+
   const jti = crypto.randomUUID();
   const jwtToken = jwt.sign(
     { itemId, jti, purpose: "payment", paymentToken: token },
