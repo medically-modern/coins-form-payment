@@ -134,6 +134,35 @@ function requireAuth(req, res, next) {
   }
 }
 
+// ─── Receipt auth: accept ?token=<paymentToken> alongside the normal session ───
+// A PDF has to be fetched by a plain browser navigation to download reliably —
+// and a navigation can carry neither an Authorization header nor our cross-site
+// session cookie (Safari's tracking prevention drops it). So the receipt route
+// also accepts the payment token as a query param. That's the same capability
+// the patient already has in their address bar, and the same one verifyPaymentToken
+// guards for /auth/verify — rate limiting, validation and the Monday durability
+// fallback all come along with it.
+//
+// Purely additive: with no ?token= this delegates to requireAuth untouched, so
+// every existing cookie/Bearer caller behaves exactly as before.
+async function requireAuthOrPaymentToken(req, res, next) {
+  const queryToken = typeof req.query?.token === "string" ? req.query.token : null;
+  if (!queryToken) return requireAuth(req, res, next);
+
+  try {
+    const result = await verifyPaymentToken(queryToken);
+    if (result.error) {
+      return res.status(result.status).json({ error: result.error });
+    }
+    req.itemId = result.itemId;
+    req.paymentToken = queryToken;
+    next();
+  } catch (err) {
+    console.error("[auth] Receipt token auth failed:", err.message);
+    res.status(500).json({ error: "Something went wrong. Please try again." });
+  }
+}
+
 async function logout(jti, exp) {
   const remaining = exp - Math.floor(Date.now() / 1000);
   if (remaining > 0) {
@@ -153,6 +182,7 @@ module.exports = {
   generatePaymentToken,
   verifyPaymentToken,
   requireAuth,
+  requireAuthOrPaymentToken,
   logout,
   COOKIE_OPTIONS,
 };

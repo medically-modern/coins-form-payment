@@ -232,7 +232,11 @@ export default function App() {
   // ─── Success / Receipt ───
   if (appState.mode === "success") {
     const data = (appState as any).data as PatientData | undefined;
-    const jwt = (appState as any).jwt as string | undefined;
+    // Read the payment token straight off the URL rather than waiting on session
+    // state: it's present on every route into this screen (Stripe's success_url
+    // and a revisited payment link both carry it), so the receipt button renders
+    // immediately instead of only after /api/me resolves.
+    const receiptToken = new URLSearchParams(window.location.search).get("token");
 
     return (
       <div className="min-h-screen bg-background">
@@ -255,24 +259,11 @@ export default function App() {
               </p>
             )}
 
-            {jwt && (
+            {receiptToken && (
               <a
-                href={`${API_URL}/api/receipt`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  fetch(`${API_URL}/api/receipt`, {
-                    headers: { Authorization: `Bearer ${jwt}` },
-                  })
-                    .then((r) => r.blob())
-                    .then((blob) => {
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `receipt-${data?.name?.replace(/\s+/g, "-") || "payment"}.pdf`;
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    });
-                }}
+                href={`${API_URL}/api/receipt?token=${encodeURIComponent(receiptToken)}`}
+                target="_blank"
+                rel="noopener"
                 className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 cursor-pointer transition-colors"
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -281,7 +272,8 @@ export default function App() {
             )}
 
             <p className="text-xs text-muted-foreground">
-              A receipt will also be emailed to the card on file.
+              Use the button above to save your receipt. You can reopen your original
+              link anytime to download it again.
             </p>
           </div>
         </main>

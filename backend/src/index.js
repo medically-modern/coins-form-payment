@@ -5,7 +5,7 @@ const rateLimit = require("express-rate-limit");
 const { RedisStore } = require("rate-limit-redis");
 const cookieParser = require("cookie-parser");
 const PDFDocument = require("pdfkit");
-const { verifyPaymentToken, generatePaymentToken, requireAuth, logout, COOKIE_OPTIONS } = require("./auth");
+const { verifyPaymentToken, generatePaymentToken, requireAuth, requireAuthOrPaymentToken, logout, COOKIE_OPTIONS } = require("./auth");
 const { getPatientPaymentData, storePaymentLinkInMonday, recordPaymentInMonday, writeLongText } = require("./monday");
 const { redis, healthCheck, getPaymentToken, getTokenForItem, markTokenPaid, isChargeProcessed, markChargeProcessed, logEvent } = require("./redis");
 const { COMPANY, COLUMNS, SECONDARY_BOARD_ID, SEND_INVOICE_GROUP_ID } = require("./config");
@@ -579,7 +579,7 @@ app.post("/api/send-message", apiLimiter, requireAuth, async (req, res) => {
 });
 
 // GET /api/receipt — Generate FSA/HSA-suitable PDF receipt
-app.get("/api/receipt", apiLimiter, requireAuth, async (req, res) => {
+app.get("/api/receipt", apiLimiter, requireAuthOrPaymentToken, async (req, res) => {
   try {
     const data = await getPatientPaymentData(req.itemId);
     if (!data) {
@@ -588,6 +588,16 @@ app.get("/api/receipt", apiLimiter, requireAuth, async (req, res) => {
 
     if (!data.isPaid) {
       return res.status(400).json({ error: "No payment has been recorded for this balance." });
+    }
+
+    // A charge ID alone is enough to mark an item paid (see getPatientPaymentData),
+    // deliberately, so the pay button can never be pressed twice. That leaves one
+    // gap: the paid-amount write is a separate Monday mutation, so it can be missing
+    // while the charge ID is present. Never hand the patient an FSA/HSA receipt
+    // that reads $0.00 — it's worthless for reimbursement and reads as a billing error.
+    if (!(data.paidAmount > 0)) {
+      console.warn(`[receipt] Item ${req.itemId} is marked paid but has no paid amount — refusing to render a $0.00 receipt`);
+      return res.status(409).json({ error: "Your receipt isn't ready yet. Please contact our office and we'll send it over." });
     }
 
     // Fetch payment method details from Stripe
@@ -719,6 +729,9 @@ app.get("/api/receipt", apiLimiter, requireAuth, async (req, res) => {
     doc.end();
   } catch (err) {
     console.error("[receipt] Error generating PDF:", err.message);
+    // Once the PDF starts streaming the headers are already flushed, so a JSON
+    // error write here would throw ERR_HTTP_HEADERS_SENT and mask the real cause.
+    if (res.headersSent) return res.end();
     res.status(500).json({ error: "Unable to generate receipt." });
   }
 });
