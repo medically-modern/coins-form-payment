@@ -622,7 +622,7 @@ app.get("/api/receipt", apiLimiter, requireAuth, async (req, res) => {
     // ─── Company Header ───
     doc.fontSize(15).font("Helvetica-Bold").text(COMPANY.name, { align: "center" });
     doc.fontSize(10).font("Helvetica").text(COMPANY.address, { align: "center" });
-    doc.text(`NPI: ${COMPANY.npi}  \u00b7  Tax ID: ${COMPANY.taxId}`, { align: "center" });
+    doc.text(`Supplier NPI: ${COMPANY.npi}  \u00b7  Tax ID: ${COMPANY.taxId}`, { align: "center" });
     doc.moveDown(1.5);
 
     // ─── Title + Receipt Number ───
@@ -656,7 +656,21 @@ app.get("/api/receipt", apiLimiter, requireAuth, async (req, res) => {
     doc.font("Helvetica-Bold").text("Confirmation:", rightCol, infoTop + 36);
     doc.fontSize(8).font("Helvetica").text(data.stripeChargeId || "N/A", rightCol + 80, infoTop + 37);
 
-    doc.y = infoTop + 60;
+    // ─── Ordering provider (row 4) — required for HSA/FSA substantiation ───
+    const hasProvider = !!(data.doctorName || data.doctorNpi);
+    if (hasProvider) {
+      doc.fontSize(10);
+      if (data.doctorName) {
+        doc.font("Helvetica-Bold").text("Ordering Provider:", leftCol, infoTop + 54);
+        doc.font("Helvetica").text(data.doctorName, leftCol + 100, infoTop + 54, { width: 145 });
+      }
+      if (data.doctorNpi) {
+        doc.font("Helvetica-Bold").text("Provider NPI:", rightCol, infoTop + 54);
+        doc.font("Helvetica").text(data.doctorNpi, rightCol + 80, infoTop + 54);
+      }
+    }
+
+    doc.y = infoTop + (hasProvider ? 78 : 60);
     doc.moveDown(1);
 
     // ─── Divider ───

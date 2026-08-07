@@ -37,8 +37,8 @@ const COLUMNS = {
   PATIENT_BILLED_DATE:    "date_mm3avzpm",
   CO_INSURANCE_ROLLUP:    "lookup_mm1g9mv5",
 
-  // Doctor
-  DOCTOR:                 "text_mkxr2r9b",
+  // Doctor (ordering provider)
+  DOCTOR:                 "text_mkxrh4a4",
   DOCTOR_NPI:             "text_mkxr2r9b",
 
   // ─── PAYMENT COLUMNS (new — on Secondary Board) ───

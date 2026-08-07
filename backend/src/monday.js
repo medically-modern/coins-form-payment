@@ -227,6 +227,10 @@ function transformToPaymentData(item) {
     secondaryPayer: col(COLUMNS.SECONDARY_PAYER),
     secondaryMemberId: col(COLUMNS.SECONDARY_MEMBER_ID),
 
+    // Ordering provider (required on receipts for HSA/FSA substantiation)
+    doctorName: col(COLUMNS.DOCTOR),
+    doctorNpi: col(COLUMNS.DOCTOR_NPI),
+
     // ERA summary
     primaryPaidAmount: parseFloat(col(COLUMNS.PRIMARY_PAID_AMOUNT)) || 0,
     primaryPrAmount: parseFloat(col(COLUMNS.PRIMARY_PR_AMOUNT)) || 0,
