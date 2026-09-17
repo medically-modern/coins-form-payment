@@ -10,7 +10,9 @@
  * for Medicare-style supplies, 1 pump, 1 monitor).
  *
  * Coinsurance overrides (insurance_rules.py) are applied here so
- * Humana = 0% just works. Medicare/United Medicare use real Stedi coinsurance
+ * Humana = 0% just works. Payers that leave no member cost share at all
+ * (Medicare A&B, NYSHIP, Aetna Medicare, United Medicare) short-circuit to $0 via
+ * ZERO_OOP_PAYERS. Any other Medicare-style plan uses real Stedi coinsurance
  * unless secondary is Medicaid (then $0 OOP).
  */
 
@@ -45,6 +47,11 @@ export const PAYER_RATE_SCHEDULE: Record<string, PayerRates> = {
   "Cigna": { pump_rate: 4200.0, infusion_rate: 17.75, cartridge_rate: 2.36, monitor_rate: 214.05, sensor_rate: 170.42 },
   "Midlands Choice": { pump_rate: 5644.0, infusion_rate: 31.68, cartridge_rate: 3.96, monitor_rate: 331.40, sensor_rate: 349.77 },
   "Horizon BCBS": { pump_rate: 4300.0, infusion_rate: 10.90, cartridge_rate: 3.10, monitor_rate: 480.0, sensor_rate: 445.0 },
+  // Fidelis NJ (added 2026-09-16). No negotiated rates on file yet, so every
+  // rate is null and the estimator returns {ok:false} rather than a number
+  // built on another plan's rates — the same state 8 existing payers are in.
+  // Fill these in from the contract when we have it.
+  "Fidelis NJ": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
   "BCBS TN": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
   "BCBS FL": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
   "BCBS WY": { pump_rate: null, infusion_rate: null, cartridge_rate: null, monitor_rate: null, sensor_rate: null },
@@ -96,16 +103,34 @@ const PRIMARY_MEDICAID_LABELS = new Set([
   "United Medicaid",
 ]);
 
-// Medicare A&B: patient always pays $0 OOP (MM bills Medicare directly)
+// Payers where the patient always owes $0. These plans leave no member cost
+// share on the items we resupply, so any deductible/coinsurance Stedi reports
+// would quote a charge that never actually reaches the patient. This set
+// short-circuits above the deductible + coinsurance math and returns
+// canCalculateCosts: true regardless, so the card shows a definite $0.00 rather
+// than vanishing when benefits data is missing.
+//
+// Canonical list: command-center-test src/lib/shared/payerPolicy.json, enforced
+// by that repo's scripts/check-payer-policy.mjs — this file is a registered
+// consumer, so a change here that is not made there fails that check.
+//   Medicare A&B    — MM bills Medicare directly.
+//   NYSHIP          — Empire Plan covers DME in full, no member cost share.
+//   Aetna Medicare  — fully covered, no cost share (MM-1071).
+//   United Medicare — fully covered, no cost share.
 const ZERO_OOP_PAYERS = new Set([
   "Medicare A&B",
+  "NYSHIP",
+  "Aetna Medicare",
+  "United Medicare",
 ]);
 
 // ─── Coinsurance overrides (source: insurance_rules.py) ──────────────────────
-// NOTE: Removed Medicare A&B and United Medicare from blanket 0% override.
-// Those were a shortcut assuming dual-eligible (Medicaid secondary). Now we
-// check secondary explicitly. If no Medicaid secondary, Medicare patients
-// use real Stedi coinsurance (typically 20% for Part B DME).
+// NOTE: Medicare A&B and United Medicare no longer sit here. They are not a
+// dual-eligible shortcut — they are in ZERO_OOP_PAYERS above, which also clears
+// the remaining deductible and holds even when Stedi returns no benefits data.
+// A 0% entry here would do neither. Medicare-style plans that are NOT in that
+// set use real Stedi coinsurance (typically 20% for Part B DME) unless the
+// secondary is Medicaid, which is checked explicitly.
 
 const COINSURANCE_OVERRIDES: Record<string, number> = {
   // Humana removed — now handled per-product (0% CGM, Stedi% pump/supplies)
