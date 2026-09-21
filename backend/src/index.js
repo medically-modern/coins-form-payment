@@ -471,6 +471,12 @@ app.post("/webhook/monday/send-text", async (req, res) => {
 // GET /api/me — Patient-safe payment data (ERA breakdown + amounts)
 app.get("/api/me", apiLimiter, requireAuth, async (req, res) => {
   try {
+    // This body is PHI plus live payment state. Without this header Express's
+    // ETag makes it browser-cacheable, so a reload revalidates and can be
+    // served from cache — which risks showing a patient their pre-payment
+    // statement, "Pay $X" button and all, after they have already paid.
+    res.set("Cache-Control", "no-store");
+
     const data = await getPatientPaymentData(req.itemId);
     if (!data) {
       return res.status(404).json({ error: "Patient not found" });

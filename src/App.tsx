@@ -127,22 +127,45 @@ export default function App() {
   async function verifyAndLoad(token: string, isReturn: boolean) {
     try {
       const verifyRes = await fetch(`${API_URL}/auth/verify/${token}`);
-      const verifyData = await verifyRes.json();
+      // An error status carries an { error } body, not a session — never read
+      // `success` off a body we haven't confirmed is a success body.
+      const verifyData = verifyRes.ok ? await verifyRes.json().catch(() => null) : null;
 
-      if (!verifyData.success) {
+      if (!verifyData?.success) {
         setAppState({ mode: "expired" });
         return;
       }
 
       const jwt = verifyData.token;
 
+      // `no-store`: the statement carries PHI and payment state, so it must not
+      // sit in the browser cache — and a cached copy must never be revalidated
+      // into this screen after the patient has paid.
       const meRes = await fetch(`${API_URL}/api/me`, {
         headers: { Authorization: `Bearer ${jwt}` },
+        cache: "no-store",
       });
-      const patientData: PatientData = await meRes.json();
 
-      if (isReturn || patientData.isPaid) {
-        setAppState({ mode: "success" });
+      // A non-2xx /api/me returns { error }, which has no lineItems. Rendering
+      // it as patient data throws inside render and unmounts the whole tree,
+      // leaving the patient a blank white page with no way forward — so stop
+      // here and show them something they can act on instead.
+      if (!meRes.ok) {
+        setAppState({
+          mode: "error",
+          message: "We couldn't load your statement just now. Please try again in a moment, or contact us and we'll help.",
+        });
+        return;
+      }
+
+      const patientData: PatientData | null = await meRes.json().catch(() => null);
+
+      if (!patientData || !Array.isArray(patientData.lineItems)) {
+        setAppState({
+          mode: "error",
+          message: "We couldn't load your statement just now. Please try again in a moment, or contact us and we'll help.",
+        });
+        return;
       }
 
       // Always update to authenticated so we have data for receipt
