@@ -11,6 +11,7 @@ const { redis, healthCheck, getPaymentToken, getTokenForItem, markTokenPaid, isC
 const { COMPANY, COLUMNS, SECONDARY_BOARD_ID, SEND_INVOICE_GROUP_ID } = require("./config");
 const { sendSMS, buildPaymentMessage, buildFollowUpMessage } = require("./ringcentral");
 const { enqueueSMS } = require("./smsQueue");
+const cashPay = require("./cashPay");
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
@@ -74,6 +75,26 @@ app.post("/webhook/stripe", express.raw({ type: "application/json" }), async (re
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object;
+
+    /* ─── Cash pay: a different board, a different flow ───
+       ⚠️ Branches on `metadata.service`, which both flows set on their own
+       sessions, and returns BEFORE the pay-secondary path below. The two must
+       never both run on one session: this one writes the New Order Board, that
+       one writes Secondary Claims, and each would be writing the other's board
+       with an item id that means nothing on it.
+       ⚠️ A 500 here is deliberate — Stripe retries it. A payment we took and
+       failed to record is the worst state this service has, because the
+       ordering gate then holds an order the patient has already paid for. */
+    if (session.metadata?.service === "cash-pay") {
+      try {
+        await cashPay.handleStripeSession(session);
+      } catch (err) {
+        console.error("[cash-pay] Error recording payment:", err.message);
+        return res.status(500).json({ error: "Failed to record cash payment" });
+      }
+      return res.json({ received: true, service: "cash-pay" });
+    }
+
     const itemId = session.metadata?.itemId;
     const paymentToken = session.metadata?.paymentToken;
     const chargeId = session.payment_intent; // PaymentIntent ID serves as charge ID
@@ -150,6 +171,20 @@ const authLimiter = rateLimit({ windowMs: 60_000, max: 10, standardHeaders: true
 const apiLimiter = rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false, store: redisStore("api") });
 
 app.use(globalLimiter);
+
+/* ⚠️ Mounted HERE, and the position is both halves of it: after
+   `express.json()` because the route reads a JSON body, and after
+   `app.use(globalLimiter)` because an endpoint that mints Stripe payment links
+   must not be the one route in this service that skips rate limiting. Its own
+   limiter is tighter again — a rep presses Generate once per order, so ten a
+   minute is already far more than the real thing.
+   (The Stripe webhook is the one that must stay ABOVE `express.json()`: it
+   needs the raw body to verify a signature — CLAUDE.md §6.) */
+const cashPayLimiter = rateLimit({
+  windowMs: 60_000, max: 10, standardHeaders: true, legacyHeaders: false,
+  store: redisStore("cash-pay"),
+});
+cashPay.register(app, { stripe, limiter: cashPayLimiter });
 
 // ─── Health check ───
 app.get("/health", async (req, res) => {

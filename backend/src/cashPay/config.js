@@ -1,0 +1,75 @@
+// ─── Cash Pay: the New Order Board, and what this flow touches on it ───
+//
+// ⚠️ A DIFFERENT BOARD from the rest of this repo. Everything else here reads
+// and writes the Secondary Claims Board (`../config.js`); cash pay is an ORDER
+// being paid for up front, so it lives on the **New Order Board**. That is why
+// this flow has its own config, its own board-parameterised writes
+// (`./monday.js`) and its own routes — nothing in the pay-secondary path
+// changes, and neither board's column map can be reached by the other's code.
+//
+// Column ids and label ids below were read off the LIVE board on 2026-09-22.
+// The Command Center's own map is `src/lib/orders/mondayApi.ts` COL in
+// medically-modern/command-center-test; the two must agree.
+
+const ORDER_BOARD_ID = "18405457690";
+
+const ORDER_COLUMNS = {
+  ORDER_STATUS:       "status",              // Order Status
+  PRIMARY_INSURANCE:  "color_mm18jhq5",      // Primary Insurance
+  PRIMARY_PHONE:      "phone_mm18rr9v",      // Primary Phone
+  CAH_ORDER_NUMBER:   "text_mm3z47x2",       // CAH Order Number (Cardinal writes it)
+  NOTES:              "long_text_mm60y0ap",  // Notes
+
+  // The five cash pay columns, added 2026-09-21.
+  CASH_PAY_LINK:      "text_mm7dzgzd",       // Cash Pay Link
+  CASH_PAY_AMOUNT:    "numeric_mm7devxs",    // Cash Pay Amount
+  CASH_PAY_LINK_SENT: "date_mm7d7wxe",       // Cash Pay Link Sent
+  CASH_PAY_PAID_DATE: "date_mm7dejzt",       // Cash Pay Paid Date
+  STRIPE_CHARGE_ID:   "text_mm7dkma5",       // Stripe Charge ID
+};
+
+// ⚠️ Status columns are written by label INDEX, and monday assigns those
+// itself — lowest free slot at label-creation time, never display order. A
+// write to an index the column does not have is accepted at 200 and DROPPED,
+// silently. Both of these were read back from `settings_str` on 2026-09-22.
+//
+// ⚠️ `PAID_CASH` and `CASH_PAY_PAYER` are 6 and 152 on THIS board and mean
+// nothing on any other. The Command Center's `CASH_PAY_LABEL_ID` carries one
+// id per board for the same reason.
+const ORDER_STATUS_INDEX = {
+  ORDER: 0,
+  ORDERED: 1,
+  PAID_CASH: 6,
+};
+const CASH_PAY_PAYER_INDEX = 152;
+/** The board's own spelling, for reads. Written by index, never by text. */
+const CASH_PAY_LABEL = "Cash Pay";
+
+// ─── Bounds on what a link may be minted for ───
+//
+// ⚠️ THE CALLER SUPPLIES THE AMOUNT. The Command Center owns the pricing rule
+// (`lib/orders/cashPayPricing.ts` — Cardinal's cost x1.25, rounded per line,
+// plus a $10 floor) and this service deliberately does NOT re-implement it: a
+// second copy of a money rule in a second repo is the hand-synced hazard, and
+// its drift would be a patient charged an amount no screen ever showed.
+//
+// What this service owes instead is a sanity boundary, because an endpoint
+// that mints a Stripe link for an arbitrary number is exactly the endpoint to
+// be careful with. These are deliberately wide — they exist to catch a bug or
+// a misplaced decimal, not to second-guess a real quote. The largest real cash
+// pay order to date is $1,030.69.
+const LIMITS = {
+  MIN_TOTAL_CENTS: 100,          // $1 — below this something has gone wrong
+  MAX_TOTAL_CENTS: 2_000_00,     // $2,000 — ~2x the largest real order
+  MAX_LINES: 20,                 // Stripe's own ceiling on a payment link
+  MAX_LABEL_CHARS: 250,
+};
+
+module.exports = {
+  ORDER_BOARD_ID,
+  ORDER_COLUMNS,
+  ORDER_STATUS_INDEX,
+  CASH_PAY_PAYER_INDEX,
+  CASH_PAY_LABEL,
+  LIMITS,
+};

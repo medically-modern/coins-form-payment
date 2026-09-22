@@ -18,8 +18,13 @@ records the result on the patient's Monday item (`PATIENT_PAID_AMOUNT`, `PATIENT
 `STRIPE_CHARGE_ID`). `GET /api/receipt` then renders a receipt PDF carrying the company's **NPI
 and Tax ID** (`COMPANY` in `backend/src/config.js`).
 
+**There are now TWO money paths, on two boards** — the coinsurance one above, and **cash pay**
+(`backend/src/cashPay/`, §8), which mints a Stripe **Payment Link** for a patient with no
+insurance and records the payment on the **New Order Board**. They share this service and the
+Stripe account and nothing else; the Stripe webhook branches on `metadata.service`.
+
 Treat every change to the amount shown, the amount charged, or the receipt as higher-stakes than
-the code size suggests, and remember there is **no test suite here at all** (§4).
+the code size suggests, and see §4 on what does and does not gate a change here.
 
 ---
 
@@ -40,30 +45,53 @@ The frontend reads `VITE_API_URL`, defaulting to the Railway URL above (`src/App
 
 ---
 
-## 3. The board
+## 3. The boards
 
-**Secondary Claims Board `18413019028`**, group **`group_mm3ba7x1`** ("Send Invoice"). Parent
+**TWO, and no file may reach both.** The coinsurance flow reads and writes **Secondary Claims
+`18413019028`** through `backend/src/config.js` + `backend/src/monday.js`; the cash pay flow reads
+and writes **New Order `18405457690`** through `backend/src/cashPay/config.js` +
+`backend/src/cashPay/monday.js` (§8). The split is deliberate: `monday.js` hardcodes
+`SECONDARY_BOARD_ID` into every write, which is right for what it does, and parameterising it
+would put the order board one typo away from every coinsurance write.
+
+⚠️ **A cross-board write is the live hazard here, not a theoretical one.** `smsQueue.enqueueSMS`
+and `processQueue` write the Secondary board's SMS Status and Pay Link Sent Date using whatever
+`itemId` they are handed — fed an order-board id they write the wrong board, and if an item with
+that id happens to exist there they stamp a stranger's record. `cashPay/index.js` records this at
+the point somebody would reach for it.
+
+### Secondary Claims `18413019028`
+
+Group **`group_mm3ba7x1`** ("Send Invoice"). Parent
 columns are the patient, the claim and the payment; **subitems are the ERA line items**
 (`SUBITEM_COLUMNS` — HCPC, modifiers, coinsurance, deductible, PR, copay). All IDs are in
 `backend/src/config.js`, which is the contract.
 
-⚠️ **`backend/.env.example` is WRONG about the board.** Its first comment says the Monday token is
-for "Subscription Board 18407459988" — that is the *reorder* repo's board. This app reads and
-writes the Secondary Claims board above. The comment is stale; the code is right.
+✅ **`backend/.env.example`'s board comment was wrong and is fixed** (2026-09-22). It used to say
+the Monday token was for "Subscription Board 18407459988" — a different repo's board entirely. It
+now names both boards this service actually touches.
 
 Two Monday webhooks drive it: `POST /webhook/monday` (mint a pay link) and
 `POST /webhook/monday/send-text` (text it). Token TTL is **30 days**, JWT session 24h.
 
 ---
 
-## 4. ⚠️ There is NO test suite, NO linter and NO typecheck script
+## 4. ⚠️ There is NO linter and NO typecheck script, and the tests cover ONE slice
 
-`package.json` has exactly `dev`, `build`, `preview`. So:
+`npm test` (`node --test`, no dependency added) runs **`backend/test/*.test.js`**, which today is
+**the cash pay rules and nothing else** — the amounts, the refusals, the Stripe payload. It exists
+because that slice decides whether a patient is charged and for how much (§8).
 
-- **`npm run build` is the entire gate.** It will catch a type error or a syntax error and nothing
-  else. A logic mistake ships.
-- There is no equivalent of the 3,600-test suite that protects `command-center-test`. Verify
+Everywhere else:
+
+- **`npm run build` is still the entire gate.** It will catch a type error or a syntax error and
+  nothing else. A logic mistake in the coinsurance path, the receipt, the SMS queue or the auth
+  layer ships.
+- There is no equivalent of the 4,400-test suite that protects `command-center-test`. Verify
   behaviour by hand, and be correspondingly conservative — especially around §1.
+- ⚠️ Adding a test is cheap now: drop a `backend/test/<thing>.test.js` in, no new dependency. The
+  reason the cash pay slice has them and the rest does not is that it was written after this
+  paragraph, not that the rest is safer.
 
 ---
 
@@ -131,3 +159,100 @@ from command-center and the wording was never updated. There is no Welcome Call 
 | A payer is $0 on one screen and charged on another | §5. Run command-center-test's `node scripts/check-payer-policy.mjs` |
 | "The OOP card is broken" | §5 — it is not mounted and not in the bundle; it renders for nobody |
 | A link/text didn't go out | the two `POST /webhook/monday*` routes, then `backend/src/smsQueue.js` |
+| A cash pay link wasn't minted / the button said no | §8 — `backend/src/cashPay/rules.js` `mintRefusal` (the order's state) and `lineRefusal` (the amount). A **503** means `CASH_PAY_SERVICE_TOKEN` is unset, which disables the route on purpose |
+| A cash payment didn't record on Monday | §8 — the `metadata.service === "cash-pay"` branch in `/webhook/stripe`, then `cashPay/monday.js` `recordCashPayment`. It returns 500 so Stripe retries; check the logs for `[cash-pay]` |
+| "Why is the cash pay link a Payment Link and not a Checkout Session?" | §8 — a Checkout Session expires in at most 24 hours and the link is texted and chased for a fortnight. Do not align the two flows |
+| A card payment errors at Stripe on the cash pay link | §8 — check nothing has added `payment_intent_data.statement_descriptor`; Stripe rejects it for card charges. Pinned by a test |
+| Something wrote the wrong board | §3 — `smsQueue` is bound to Secondary Claims and takes any itemId. Cash pay has its own client for exactly this reason |
+
+---
+
+## 8. Cash pay — a patient with no insurance, paying for one order
+
+`backend/src/cashPay/` — **config.js** (the New Order Board's ids), **rules.js** (pure, tested),
+**monday.js** (that board's reads and writes), **index.js** (the route and the webhook branch).
+Mounted from `backend/src/index.js` in two places and touching nothing else.
+
+The Command Center prices the order from Cardinal's costs, presses Generate, and this mints the
+link. When the patient pays, Stripe's webhook records it and flips **Order Status → Paid Cash**,
+which is what lets that order be placed with Cardinal at all. The whole path — intake, pricing,
+the ordering gate, the card — is `command-center-test`'s CLAUDE.md §5.48.
+
+### ⚠️⚠️ A Stripe PAYMENT LINK, not a Checkout Session
+
+Verified against Stripe's API reference, 2026-09-22. A Checkout Session's `expires_at` *"can be
+anywhere from 30 minutes to 24 hours after Checkout Session creation. By default, this value is 24
+hours from creation"* — and cannot be set longer. A session URL texted to a patient is dead by the
+next morning, and the reminder loop would spend a fortnight chasing a link nobody can pay.
+
+A **Payment Link has no expiry at all**. It takes inline `line_items[].price_data`, it is retired
+with `active: false` + `inactive_message` rather than deleted, and — the part the webhook depends
+on — **Stripe copies a Payment Link's `metadata` onto every Checkout Session it creates**, so
+`checkout.session.completed` arrives carrying `itemId` and `service`.
+
+⚠️ **The coinsurance flow's Checkout Session is CORRECT and must not be "aligned" with this.**
+There the patient is already on the page when it is minted, so 24 hours is ample.
+
+### ⚠️⚠️ No `statement_descriptor` on the payment link
+
+Stripe, on `payment_intent_data.statement_descriptor`: it is for a *non-card* charge, and
+*"setting this value for a card charge returns an error"* — for cards the field is
+`statement_descriptor_suffix`, concatenated onto the account's prefix inside a 22-character total.
+Nearly every patient pays by card, so copying the coinsurance session's `statement_descriptor`
+into a Payment Link would error on the one thing that matters. The account default applies. Pinned
+by a test.
+
+### The route
+
+`POST /api/cash-pay/create-link` — `{ itemId, lines[], totalCents, regenerate? }`.
+
+- ⚠️ **Service auth, not `requireAuth`.** That is the PATIENT's JWT, minted from a pay link; the
+  caller here is the Command Center, which has no patient session and must not be given one.
+  `CASH_PAY_SERVICE_TOKEN` is a shared bearer in the Railway environment, and **unset disables the
+  route (503) rather than leaving it open** — an endpoint that mints Stripe links must never be
+  reachable because somebody forgot to configure it.
+- ⚠️ **Mounted after `express.json()` AND after `app.use(globalLimiter)`**, with a tighter limiter
+  of its own. `register()` throws without one rather than mounting unthrottled.
+- ⚠️ **THE CALLER SUPPLIES THE PRICE, deliberately.** The Command Center owns the pricing rule
+  (Cardinal's cost x1.25, rounded per line, plus a $10 floor under $10 of markup) and this service
+  does not re-implement it: a second copy of a money rule in a second repo is the hand-synced
+  hazard, and its drift would be a patient charged an amount no screen ever showed. What this
+  service owes instead is the ORDER's own state (`mintRefusal` — cash pay, unpaid, not already
+  with Cardinal) and a sanity boundary on the number (`lineRefusal`).
+- ⚠️ **The lines must ADD UP to the stated total.** Stripe charges the sum of what it is handed, so
+  a total computed a second way can differ by a cent from the lines printed above it. A
+  disagreement is a refusal, never a silent preference for one.
+- ⚠️ **Idempotent by default.** An order that already has a link returns it; `regenerate: true` is
+  the explicit way to replace one. Two live links for one order means the patient holds two, and
+  paying the older one charges last week's price.
+- ⚠️ **Single use** (`restrictions.completed_sessions.limit = 1`) — without it a patient who taps
+  the text twice pays twice, and the second charge is refunded by hand.
+
+### The webhook branch
+
+In `backend/src/index.js`'s existing `/webhook/stripe`, first thing inside
+`checkout.session.completed`: `metadata.service === "cash-pay"` → `cashPay.handleStripeSession`,
+then **return**. The two branches must never both run on one session — one writes the New Order
+Board, the other Secondary Claims, each with an item id that means nothing on the other.
+
+⚠️ A failure returns **500 so Stripe retries**. A payment taken and not recorded is the worst state
+this service has: the ordering gate then holds an order the patient has already paid for.
+
+⚠️ **`recordCashPayment` writes the STATUS LAST** — Order Status → Paid Cash is what opens that
+gate, so writing it before the charge id would open it against an order whose payment columns are
+still empty.
+
+### The text is the BOARD's job
+
+The handoff says to reuse the monday texting automation, and the order board is where it belongs
+(the Command Center's Send press is dark waiting on exactly that column and automation). There is
+deliberately no text route here, and `cashPay/index.js` records the cross-board trap at the point
+somebody would reach for `enqueueSMS`. `cashPayText()` is exported unused so the wording has one
+home and whoever builds the automation has the exact string.
+
+### Not built
+
+The **15-day reminder loop** and a **branded cash-pay page** on the frontend. The reminder is a
+date-arrival automation on the order board (the same shape the Command Center's MR ladder uses);
+the patient currently lands on Stripe's own hosted confirmation, which is why `after_completion`
+sets a custom message rather than redirecting to a page that does not exist.
