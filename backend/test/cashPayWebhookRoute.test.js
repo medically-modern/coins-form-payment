@@ -174,15 +174,19 @@ test("⚠️ the trigger is cleared only after the link is on the board", () => 
 });
 
 /* ──────────────────────────────────────────────────────────────────────────
-   The secret in the PATH.
+   Where the secret may arrive.
 
-   ⚠️ This is not a convenience. A webhook created through monday's API
-   (`create_webhook`) does NOT deliver the query string it was registered with.
-   Measured against production on 2026-09-22: webhook 641115241 on the New Order
-   Board was registered with `?key=…`, its save-time challenge answered 200, and
-   the first real event arrived with no key and was refused 401. Monday's API
-   does not expose a webhook's stored `url`, so the 401 is the only evidence
-   there is — which is exactly why this is pinned here rather than remembered.
+   ⚠️⚠️ Monday signs every webhook delivery with a JWT in `Authorization`. So a
+   `header || query || path` chain always resolves to that JWT and the real key
+   is never compared — a correctly-configured webhook is refused 401, looking
+   for all the world like a wrong secret. Measured in production 2026-09-22:
+   `?key=<secret>` → 401, `/cash-pay/<secret>` → 401, and the same path with no
+   Authorization header → 200.
+
+   An earlier pass read the first two as "monday drops the query string" and
+   added the path form to work around it. Wrong — the path was delivered intact
+   and shadowed just the same. Railway's HTTP log strips query strings, which is
+   what made the wrong explanation fit.
    ────────────────────────────────────────────────────────────────────────── */
 
 test("the route is registered on BOTH the bare path and /:secret", () => {
@@ -197,12 +201,26 @@ test("both registrations share ONE handler", () => {
   assert.equal((src.match(/app\.post\("\/webhook\/monday\/cash-pay/g) || []).length, 2);
 });
 
-test("⚠️ requireWebhookSecret accepts the path, and still accepts header and query", () => {
+test("⚠️⚠️ all three locations are CHECKED — none may shadow another", () => {
+  // ⚠️ Comments are stripped FIRST: the ones on this function describe the very
+  // shadowing it must not do, so a raw-text scan fails on its own explanation
+  // and the only way to pass it is to delete the warning.
   const fn = src.slice(src.indexOf("function requireWebhookSecret"));
-  const body = fn.slice(0, fn.indexOf("\n}"));
-  assert.match(body, /req\.headers\.authorization/, "header form must stay — curl and the UI automation use it");
-  assert.match(body, /req\.query\?\.key/, "query form must stay — a UI-built automation preserves it");
-  assert.match(body, /req\.params\?\.secret/, "path form is what an API-created monday webhook needs");
+  const body = fn.slice(0, fn.indexOf("\n}"))
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+
+  // All three are read into one list...
+  const list = body.slice(body.indexOf("const candidates"), body.indexOf("];") + 2);
+  assert.match(list, /req\.headers\.authorization/, "the header form must stay");
+  assert.match(list, /req\.query\?\.key/, "the query form must stay");
+  assert.match(list, /req\.params\?\.secret/, "the path form must stay");
+
+  // ...and EVERY entry is compared. `.some` is the whole fix: the shape this
+  // replaced was `const got = header || query`, which monday's own
+  // Authorization JWT always won.
+  assert.match(body, /candidates\.some\(/, "every candidate must be compared");
+  assert.ok(!/const got\s*=/.test(body), "a single first-one-present variable is the bug");
 });
 
 test("⚠️ an absent secret is still a 503, not a 401", () => {

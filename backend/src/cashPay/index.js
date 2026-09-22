@@ -73,21 +73,34 @@ function requireWebhookSecret(req, res) {
     res.status(503).json({ error: "The cash pay webhook is not configured on this server." });
     return false;
   }
-  /* Three places the secret may arrive, and the PATH one is not redundant:
-     ⚠️ a webhook created through monday's **API** (`create_webhook`) does not
-     deliver the query string it was registered with. Measured 2026-09-22 —
-     webhook 641115241 on the New Order Board was registered with `?key=…`, its
-     save-time challenge answered 200, and the first real event arrived with no
-     key at all and was refused 401. Monday's API does not expose a webhook's
-     stored `url`, so there is no way to read back what it kept; the 401 is the
-     evidence. A secret in the PATH cannot be dropped that way.
-     The header and query forms stay for the automation built in monday's UI,
-     which does preserve what you type, and for curl. */
-  const header = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
-  const query = String(req.query?.key || "");
-  const path = String(req.params?.secret || "");
-  const got = header || query || path;
-  if (got.length !== expected.length || got !== expected) {
+  /* ⚠️⚠️ **MONDAY SENDS ITS OWN `Authorization` HEADER, so the secret must be
+     looked for in ALL THREE places rather than the first one present.** Monday
+     signs every webhook delivery with a JWT in `Authorization`; an
+     `a || b || c` chain therefore always resolves to that JWT, and the real key
+     — in the query string or the path — is never even compared. The delivery is
+     refused 401 with a correctly-configured webhook, which looks exactly like a
+     wrong secret.
+
+     Measured against production, 2026-09-22, on the New Order Board:
+       · `?key=<secret>`            → 401
+       · `/cash-pay/<secret>`       → 401
+       · `/cash-pay/<secret>` with no Authorization header → 200
+     An earlier fix here read the first two failures as "monday drops the query
+     string" and added the path form to work around it. That diagnosis was
+     wrong: the path was being delivered intact and shadowed just the same.
+     Railway's HTTP log strips query strings, which is what made the wrong
+     explanation look plausible — you cannot see from it whether `?key=`
+     arrived.
+
+     All three forms are kept. The header is what curl and a UI-built automation
+     can use; the query and path are what an API-created webhook can carry past
+     monday's own header. */
+  const candidates = [
+    String(req.headers.authorization || "").replace(/^Bearer\s+/i, ""),
+    String(req.query?.key || ""),
+    String(req.params?.secret || ""),
+  ];
+  if (!candidates.some((got) => got.length === expected.length && got === expected)) {
     console.warn("[cash-pay/wh] Refused — bad secret");
     res.status(401).json({ error: "Unauthorized" });
     return false;
