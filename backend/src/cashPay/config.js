@@ -55,9 +55,13 @@ const CASH_PAY_ACTION_INDEX = {
   GENERATE: 0,   // "Generate link"   — written by the Command Center, mints below
   SEND: 3,       // "Send to patient" — written by the Command Center, texts (board automation)
   FAILED: 2,     // "Link failed"     — written by THIS service when a mint refuses
+  TEXT_FAILED: 1, // "Text failed"    — written by THIS service when a send refuses
 };
-/** The board's own spelling of the mint trigger, for reading an event back. */
+/** The board's own spelling of the two triggers, for reading an event back.
+ *  ⚠️ Matched against the LABEL monday sends, so these are the board's strings,
+ *  not ours — change them only against `settings_str`. */
 const CASH_PAY_ACTION_GENERATE_LABEL = "Generate link";
+const CASH_PAY_ACTION_SEND_LABEL = "Send to patient";
 /** The board's own spelling, for reads. Written by index, never by text. */
 const CASH_PAY_LABEL = "Cash Pay";
 
@@ -106,6 +110,7 @@ module.exports = {
   CASH_PAY_PAYER_INDEX,
   CASH_PAY_ACTION_INDEX,
   CASH_PAY_ACTION_GENERATE_LABEL,
+  CASH_PAY_ACTION_SEND_LABEL,
   CASH_PAY_LABEL,
   CASH_PAY_LINE_LABEL,
   LIMITS,

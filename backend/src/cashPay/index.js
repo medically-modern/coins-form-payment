@@ -10,14 +10,22 @@
 // `metadata.service === "cash-pay"` — a discriminator the existing flow already
 // sets on its own sessions as "pay-secondary".
 
-const { getOrder, storeCashPayLink, recordCashPayment, setCashPayAction } = require("./monday");
+const {
+  getOrder, storeCashPayLink, recordCashPayment, setCashPayAction, stampCashPayLinkSent,
+} = require("./monday");
 const {
   mintRefusal, lineRefusal, money, paymentLinkPayload, etDateString,
   centsFromAmountText, eventStatusLabel, boardLineItems,
 } = require("./rules");
 const {
-  ORDER_BOARD_ID, ORDER_COLUMNS, CASH_PAY_ACTION_INDEX, CASH_PAY_ACTION_GENERATE_LABEL,
+  ORDER_BOARD_ID, ORDER_COLUMNS, CASH_PAY_ACTION_INDEX,
+  CASH_PAY_ACTION_GENERATE_LABEL, CASH_PAY_ACTION_SEND_LABEL,
 } = require("./config");
+/* ⚠️ The board-agnostic sender, NOT `../smsQueue` — that is hardcoded to the
+   Secondary Claims board and would write this order's status onto a claims row.
+   `buildCashPayMessage` sits beside coins' own two so the three texts a patient
+   can get from us are written in one place and read alike. */
+const { sendSMS, buildCashPayMessage } = require("../ringcentral");
 
 /**
  * Service auth.
@@ -298,6 +306,92 @@ function register(app, { stripe, limiter }) {
   app.post("/webhook/monday/cash-pay", cashPayWebhook);
   app.post("/webhook/monday/cash-pay/:secret", cashPayWebhook);
 
+  /**
+   * POST /webhook/monday/cash-pay-text  (and /:secret)
+   *
+   * Fired by a monday webhook when **Cash Pay Action → "Send to patient"**.
+   * Texts the patient the link that is already on the row, stamps Cash Pay Link
+   * Sent, and clears the trigger.
+   *
+   * ⚠️ **It never mints.** The link must already be there; a send that also
+   * minted would let one press produce a link the rep has not seen and a text
+   * quoting it in the same breath. Nothing to send is a refusal, not a mint.
+   *
+   * ⚠️ **A RE-SEND IS ALLOWED, and is a chase rather than a duplicate.** Josh's
+   * rule for the substitution flow one board over: re-pressing means "they did
+   * not answer", and refusing it would leave a rep with no way to chase. The
+   * stamp is overwritten so the date always answers "when did we LAST text
+   * them".
+   *
+   * ⚠️ **`smsQueue` is deliberately not used.** It is hardcoded to the
+   * Secondary Claims board — `writeSmsStatus` would write this order's status
+   * onto a claims row. `ringcentral.sendSMS` is the board-agnostic sender.
+   */
+  const cashPayTextWebhook = async (req, res) => {
+    if (req.body?.challenge) {
+      console.log("[cash-pay/text] Challenge received");
+      return res.json({ challenge: req.body.challenge });
+    }
+    if (!requireWebhookSecret(req, res)) return;
+
+    const event = req.body?.event;
+    if (!event) return res.status(400).json({ error: "No event in payload" });
+
+    const itemId = String(event.pulseId ?? "");
+    const boardId = String(event.boardId ?? "");
+    if (!itemId || itemId === "undefined") return res.status(400).json({ error: "Missing pulseId" });
+    if (boardId && boardId !== ORDER_BOARD_ID) {
+      console.log(`[cash-pay/text] Ignoring — wrong board (${boardId})`);
+      return res.json({ ok: true, skipped: true, reason: "wrong board" });
+    }
+
+    /* ⚠️ The label guard is what stops a "Generate link" press texting. Both
+       triggers watch the same column, so each route must check which one fired
+       rather than trusting the webhook's own filter. */
+    const label = eventStatusLabel(event, ORDER_COLUMNS.CASH_PAY_ACTION);
+    if (label !== CASH_PAY_ACTION_SEND_LABEL) {
+      console.log(`[cash-pay/text] Ignoring item ${itemId} — label "${label}" is not the send trigger`);
+      return res.json({ ok: true, skipped: true, reason: "not the send trigger" });
+    }
+
+    /* ⚠️ "Text failed" is its OWN label, not "Link failed". They are different
+       facts with different fixes: one means Stripe never gave us a link, the
+       other means the link exists and the patient did not get it. Telling a rep
+       the wrong one sends them to re-generate a link that is already fine. */
+    const markTextFailed = async (why) => {
+      console.warn(`[cash-pay/text] Item ${itemId} refused: ${why}`);
+      try { await setCashPayAction(itemId, CASH_PAY_ACTION_INDEX.TEXT_FAILED); }
+      catch (err) { console.error("[cash-pay/text] Could not write Text failed:", err.message); }
+      return res.json({ ok: true, skipped: true, reason: why });
+    };
+
+    try {
+      const order = await getOrder(itemId);
+      if (!order) return await markTextFailed("that order is not on the order board");
+      if (!order.cashPayLink) return await markTextFailed("no payment link on the order yet — generate one first");
+      if (!order.phone) return await markTextFailed("no phone number on the order");
+
+      const body = buildCashPayMessage(order.name, order.cashPayLink, order.cashPayAmount);
+      await sendSMS(order.phone, body);
+
+      /* ⚠️ Stamp BEFORE clearing the trigger. The card reads the stamp as "it
+         went out" and the cleared trigger as "the service is done"; clearing
+         first leaves a window where the card says neither and a rep presses
+         again. */
+      await stampCashPayLinkSent(order.itemId, etDateString());
+      await setCashPayAction(order.itemId, null);
+
+      console.log(`[cash-pay/text] Link texted for order ${order.itemId}`);
+      return res.json({ ok: true, itemId: order.itemId, sent: true });
+    } catch (err) {
+      console.error("[cash-pay/text] Send failed:", err.message);
+      return await markTextFailed("the text could not be sent — check the number and try again");
+    }
+  };
+
+  app.post("/webhook/monday/cash-pay-text", cashPayTextWebhook);
+  app.post("/webhook/monday/cash-pay-text/:secret", cashPayTextWebhook);
+
   /* ⚠️⚠️ **THE TEXT IS THE BOARD'S JOB, NOT THIS SERVICE'S — and the obvious
      shortcut is a cross-board write.** The handoff says to reuse the monday
      texting automation, and the order board is where that automation belongs
@@ -322,13 +416,7 @@ function register(app, { stripe, limiter }) {
  * lives in code so the wording has one home and can be tested, and so
  * whoever builds the automation has the exact string to paste.
  */
-function cashPayText(order) {
-  const first = String(order.name || "").trim().split(/\s+/)[0] || "there";
-  const amount = order.cashPayAmount ? `$${Number(order.cashPayAmount).toFixed(2)}` : "your order";
-  return `Hi ${first}, this is Medically Modern. Your supplies come to ${amount}. `
-    + `You can pay securely here: ${order.cashPayLink}\n\n`
-    + `Questions? Call us on (347) 503-7148.`;
-}
+
 
 /**
  * The `checkout.session.completed` branch for a cash payment.
@@ -351,4 +439,4 @@ async function handleStripeSession(session) {
   return true;
 }
 
-module.exports = { register, handleStripeSession, cashPayText, requireService };
+module.exports = { register, handleStripeSession, requireService };

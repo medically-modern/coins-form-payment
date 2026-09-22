@@ -110,10 +110,16 @@ test("⚠️ an unrecognised shape reads as NO label, so it cannot mint", () => 
 // ─── The label ids, which monday assigned ───
 
 test("⚠️ the trigger label ids are the ones monday gave, not the ones asked for", () => {
-  /* Read back from the live `settings_str` on 2026-09-22: monday derives a new
-     label's id from its COLOUR, so these are 0 / 3 / 2. A write to an id the
-     column does not have is accepted at 200 and dropped, silently. */
-  assert.deepEqual(CASH_PAY_ACTION_INDEX, { GENERATE: 0, SEND: 3, FAILED: 2 });
+  /* Read back from the live `settings_str`: monday derives a new label's id
+     from its COLOUR, so these are 0 / 3 / 2 / 1 rather than 0 / 1 / 2 / 3. A
+     write to an id the column does not have is accepted at 200 and dropped,
+     silently.
+     ⚠️ TEXT_FAILED is its own label, not a reuse of FAILED. "Stripe never gave
+     us a link" and "the link exists and the patient did not get it" are
+     different facts with different fixes; showing a rep the wrong one sends
+     them to re-generate a link that is perfectly fine. */
+  assert.deepEqual(CASH_PAY_ACTION_INDEX,
+    { GENERATE: 0, SEND: 3, FAILED: 2, TEXT_FAILED: 1 });
   assert.equal(ORDER_COLUMNS.CASH_PAY_ACTION, "color_mm7e3rxj");
 });
 
@@ -196,9 +202,10 @@ test("the route is registered on BOTH the bare path and /:secret", () => {
 
 test("both registrations share ONE handler", () => {
   // Two copies would drift, and the drift would be an auth check on one path
-  // and not the other.
+  // and not the other. ⚠️ Anchored with the closing quote/slash so it does not
+  // also count the cash-pay-text pair.
   assert.equal((src.match(/const cashPayWebhook = async/g) || []).length, 1);
-  assert.equal((src.match(/app\.post\("\/webhook\/monday\/cash-pay/g) || []).length, 2);
+  assert.equal((src.match(/app\.post\("\/webhook\/monday\/cash-pay(?:"|\/:secret")/g) || []).length, 2);
 });
 
 test("⚠️⚠️ all three locations are CHECKED — none may shadow another", () => {
@@ -233,4 +240,62 @@ test("⚠️ an absent secret is still a 503, not a 401", () => {
   const four01 = body.indexOf("401");
   assert.ok(notSet >= 0 && five03 > notSet, "unset secret must 503");
   assert.ok(four01 > five03, "the 401 is the wrong-secret case, and comes after");
+});
+
+/* ──────────────────────────────────────────────────────────────────────────
+   The text route — POST /webhook/monday/cash-pay-text
+   ────────────────────────────────────────────────────────────────────────── */
+
+const textBody = src.slice(src.indexOf("const cashPayTextWebhook = async"));
+
+test("the text route is registered on both paths, sharing one handler", () => {
+  assert.equal((src.match(/const cashPayTextWebhook = async/g) || []).length, 1);
+  assert.match(src, /app\.post\("\/webhook\/monday\/cash-pay-text",\s*cashPayTextWebhook\)/);
+  assert.match(src, /app\.post\("\/webhook\/monday\/cash-pay-text\/:secret",\s*cashPayTextWebhook\)/);
+});
+
+test("⚠️ it fires on the SEND label only — a Generate press must not text", () => {
+  // Both triggers watch the same column, so each route checks which one fired
+  // rather than trusting monday's own filter.
+  assert.match(textBody, /CASH_PAY_ACTION_SEND_LABEL/);
+  assert.ok(!textBody.includes("CASH_PAY_ACTION_GENERATE_LABEL"),
+    "the text route must not key on the mint trigger");
+});
+
+test("⚠️⚠️ it NEVER mints — nothing to send is a refusal", () => {
+  // A send that also minted would let one press produce a link the rep has
+  // never seen and a text quoting it in the same breath.
+  assert.ok(!textBody.includes("paymentLinks.create"), "the text route must not create a link");
+  assert.match(textBody, /if \(!order\.cashPayLink\)/, "a missing link must refuse");
+  assert.match(textBody, /if \(!order\.phone\)/, "a missing phone must refuse");
+});
+
+test("⚠️ a refusal writes Text failed, never Link failed", () => {
+  assert.match(textBody, /CASH_PAY_ACTION_INDEX\.TEXT_FAILED/);
+  assert.ok(!textBody.includes("CASH_PAY_ACTION_INDEX.FAILED"),
+    "Link failed would send a rep to re-generate a link that is fine");
+});
+
+test("⚠️ the sent date is stamped BEFORE the trigger is cleared", () => {
+  // The card reads the stamp as "it went out" and the cleared trigger as "the
+  // service is done". Clearing first leaves a window showing neither, and a rep
+  // presses again.
+  const stampAt = textBody.indexOf("stampCashPayLinkSent(order.itemId");
+  const clearAt = textBody.indexOf("setCashPayAction(order.itemId, null)", stampAt);
+  assert.ok(stampAt >= 0, "the stamp must happen");
+  assert.ok(clearAt > stampAt, "clear must follow the stamp");
+});
+
+test("⚠️⚠️ it uses the board-agnostic sender, NEVER smsQueue", () => {
+  // smsQueue is hardcoded to the Secondary Claims board — writeSmsStatus would
+  // put this order's status on a claims row.
+  assert.ok(!src.includes('require("../smsQueue")'), "smsQueue is the wrong board");
+  assert.match(src, /require\("\.\.\/ringcentral"\)/);
+  assert.match(textBody, /await sendSMS\(order\.phone/);
+});
+
+test("the wording lives beside coins' own, and is not duplicated here", () => {
+  // Josh: "the text should mirror what coins form does". One home for all three.
+  assert.match(textBody, /buildCashPayMessage\(order\.name/);
+  assert.ok(!src.includes("function cashPayText"), "the local copy must be gone");
 });

@@ -108,6 +108,30 @@ function buildPaymentMessage(patientName, paymentLink, amount) {
   ].join("\n");
 }
 
+/**
+ * The cash pay text.
+ *
+ * ⚠️ **Mirrors `buildPaymentMessage` deliberately** (Josh, 2026-09-22: *"the
+ * text should mirror what coins form does"*) — same greeting, same "this is
+ * Medically Modern", same blank line, same bare link on its own last line. A
+ * patient who has had one of these before should not be able to tell the two
+ * apart, and the link being alone on the final line is what makes it tappable
+ * in every SMS client. Only the REASON differs: there is no insurance claim
+ * here, they are paying for the supplies up front.
+ *
+ * ⚠️ The amount is optional for the same reason it is in buildPaymentMessage —
+ * a blank one degrades to "your order" rather than texting a patient "$NaN".
+ */
+function buildCashPayMessage(patientName, paymentLink, amount) {
+  const firstName = String(patientName || "").split(/[\s,]+/)[0] || "there";
+  const amountStr = amount ? `$${parseFloat(amount).toFixed(2)}` : "your order";
+  return [
+    `Hi ${firstName}, this is Medically Modern. Your diabetes supplies come to ${amountStr}. You can pay securely below.`,
+    ``,
+    `${paymentLink}`,
+  ].join("\n");
+}
+
 function buildFollowUpMessage(patientName, paymentLink) {
   const firstName = patientName.split(/[\s,]+/)[0];
   return [
@@ -148,5 +172,6 @@ module.exports = {
   normalizePhone,
   buildPaymentMessage,
   buildFollowUpMessage,
+  buildCashPayMessage,
   getMessageStatus,
 };

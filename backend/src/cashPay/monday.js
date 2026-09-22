@@ -142,4 +142,20 @@ async function recordCashPayment(itemId, { chargeId, date }) {
   await write(itemId, ORDER_COLUMNS.ORDER_STATUS, { index: ORDER_STATUS_INDEX.PAID_CASH });
 }
 
-module.exports = { getOrder, storeCashPayLink, recordCashPayment, setCashPayAction, CASH_PAY_ACTION_INDEX };
+/**
+ * Stamp Cash Pay Link Sent.
+ *
+ * ⚠️ Presence is the whole meaning — the Command Center's card reads "has the
+ * link gone out" from this cell alone, and without it the card sits on "Link
+ * ready" for ever and reps keep re-sending. A re-send deliberately re-stamps:
+ * a chase is a real send, and the newer date is the true answer to "when did we
+ * last text them".
+ */
+function stampCashPayLinkSent(itemId, date) {
+  return write(itemId, ORDER_COLUMNS.CASH_PAY_LINK_SENT, { date });
+}
+
+module.exports = {
+  getOrder, storeCashPayLink, recordCashPayment, setCashPayAction,
+  stampCashPayLinkSent, CASH_PAY_ACTION_INDEX,
+};
