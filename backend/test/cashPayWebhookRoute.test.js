@@ -29,7 +29,12 @@ const src = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 /* Just the webhook handler, so an assertion about ordering inside it cannot
    match the helper declared above it. */
-const routeBody = src.slice(src.indexOf('app.post("/webhook/monday/cash-pay"'));
+/* ⚠️ Anchored on the HANDLER, not on `app.post`. The route is registered twice —
+   once bare and once as `/:secret`, because an API-created monday webhook does
+   not deliver the query string it was registered with (see requireWebhookSecret).
+   Slicing from `app.post` would start at whichever registration came first and
+   read none of the handler. */
+const routeBody = src.slice(src.indexOf("const cashPayWebhook = async"));
 
 // ─── The amount, read off the row ───
 
@@ -166,4 +171,48 @@ test("⚠️ the trigger is cleared only after the link is on the board", () => 
   const storeAt = routeBody.indexOf("await storeCashPayLink(order.itemId");
   const clearAt = routeBody.indexOf("await setCashPayAction(order.itemId, null)", storeAt);
   assert.ok(storeAt > -1 && clearAt > storeAt, "clear must follow the store");
+});
+
+/* ──────────────────────────────────────────────────────────────────────────
+   The secret in the PATH.
+
+   ⚠️ This is not a convenience. A webhook created through monday's API
+   (`create_webhook`) does NOT deliver the query string it was registered with.
+   Measured against production on 2026-09-22: webhook 641115241 on the New Order
+   Board was registered with `?key=…`, its save-time challenge answered 200, and
+   the first real event arrived with no key and was refused 401. Monday's API
+   does not expose a webhook's stored `url`, so the 401 is the only evidence
+   there is — which is exactly why this is pinned here rather than remembered.
+   ────────────────────────────────────────────────────────────────────────── */
+
+test("the route is registered on BOTH the bare path and /:secret", () => {
+  assert.match(src, /app\.post\("\/webhook\/monday\/cash-pay",\s*cashPayWebhook\)/);
+  assert.match(src, /app\.post\("\/webhook\/monday\/cash-pay\/:secret",\s*cashPayWebhook\)/);
+});
+
+test("both registrations share ONE handler", () => {
+  // Two copies would drift, and the drift would be an auth check on one path
+  // and not the other.
+  assert.equal((src.match(/const cashPayWebhook = async/g) || []).length, 1);
+  assert.equal((src.match(/app\.post\("\/webhook\/monday\/cash-pay/g) || []).length, 2);
+});
+
+test("⚠️ requireWebhookSecret accepts the path, and still accepts header and query", () => {
+  const fn = src.slice(src.indexOf("function requireWebhookSecret"));
+  const body = fn.slice(0, fn.indexOf("\n}"));
+  assert.match(body, /req\.headers\.authorization/, "header form must stay — curl and the UI automation use it");
+  assert.match(body, /req\.query\?\.key/, "query form must stay — a UI-built automation preserves it");
+  assert.match(body, /req\.params\?\.secret/, "path form is what an API-created monday webhook needs");
+});
+
+test("⚠️ an absent secret is still a 503, not a 401", () => {
+  // A route that mints Stripe payment links must fail loudly when it is
+  // unconfigured, never look like a wrong password.
+  const fn = src.slice(src.indexOf("function requireWebhookSecret"));
+  const body = fn.slice(0, fn.indexOf("\n}"));
+  const notSet = body.indexOf("if (!expected)");
+  const five03 = body.indexOf("503", notSet);
+  const four01 = body.indexOf("401");
+  assert.ok(notSet >= 0 && five03 > notSet, "unset secret must 503");
+  assert.ok(four01 > five03, "the 401 is the wrong-secret case, and comes after");
 });

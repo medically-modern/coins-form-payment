@@ -73,9 +73,20 @@ function requireWebhookSecret(req, res) {
     res.status(503).json({ error: "The cash pay webhook is not configured on this server." });
     return false;
   }
+  /* Three places the secret may arrive, and the PATH one is not redundant:
+     ⚠️ a webhook created through monday's **API** (`create_webhook`) does not
+     deliver the query string it was registered with. Measured 2026-09-22 —
+     webhook 641115241 on the New Order Board was registered with `?key=…`, its
+     save-time challenge answered 200, and the first real event arrived with no
+     key at all and was refused 401. Monday's API does not expose a webhook's
+     stored `url`, so there is no way to read back what it kept; the 401 is the
+     evidence. A secret in the PATH cannot be dropped that way.
+     The header and query forms stay for the automation built in monday's UI,
+     which does preserve what you type, and for curl. */
   const header = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
   const query = String(req.query?.key || "");
-  const got = header || query;
+  const path = String(req.params?.secret || "");
+  const got = header || query || path;
   if (got.length !== expected.length || got !== expected) {
     console.warn("[cash-pay/wh] Refused — bad secret");
     res.status(401).json({ error: "Unauthorized" });
@@ -169,7 +180,11 @@ function register(app, { stripe, limiter }) {
    * the refusal is written to the BOARD ("Link failed") where a rep sees it,
    * and the response only tells monday not to try again.
    */
-  app.post("/webhook/monday/cash-pay", async (req, res) => {
+  /* ⚠️ TWO paths, ONE handler. `/:secret` is what an API-created monday webhook
+     must use — see requireWebhookSecret for why the query string does not
+     survive. The bare path still works when the secret comes in a header or a
+     query string. */
+  const cashPayWebhook = async (req, res) => {
     /* Monday posts this once when the webhook URL is saved and expects it
        echoed. It arrives before any secret is configured on their side, so the
        handshake is answered before the auth check — the same order the
@@ -265,7 +280,10 @@ function register(app, { stripe, limiter }) {
       console.error("[cash-pay/wh] Mint failed:", err.message);
       return await markFailed("The payment service could not mint the link — try again.");
     }
-  });
+  };
+
+  app.post("/webhook/monday/cash-pay", cashPayWebhook);
+  app.post("/webhook/monday/cash-pay/:secret", cashPayWebhook);
 
   /* ⚠️⚠️ **THE TEXT IS THE BOARD'S JOB, NOT THIS SERVICE'S — and the obvious
      shortcut is a cross-board write.** The handoff says to reuse the monday
