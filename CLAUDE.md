@@ -250,6 +250,64 @@ deliberately no text route here, and `cashPay/index.js` records the cross-board 
 somebody would reach for `enqueueSMS`. `cashPayText()` is exported unused so the wording has one
 home and whoever builds the automation has the exact string.
 
+### ⚠️⚠️ The LIVE route is the monday webhook, not `/api/cash-pay/create-link`
+
+`POST /webhook/monday/cash-pay` — the same shape the coinsurance flow has used for a year, and
+Josh's explicit choice (2026-09-22: *"do that route, it works perfectly fine dont mess it up"*).
+A rep presses **Generate** in the Command Center; the app writes **Cash Pay Amount**
+`numeric_mm7devxs` and then flips **Cash Pay Action** `color_mm7e3rxj` to *Generate link*; a board
+automation turns that into this request; this mints and writes **Cash Pay Link** `text_mm7dzgzd`
+back. **No browser ever holds a token — the board is the trigger.**
+
+⚠️ **Cash Pay Action's label ids are 0 / 3 / 2**, not 0 / 1 / 2 — monday derives a new label's id
+from its COLOUR, never from the index asked for. Read back from the live `settings_str` the day the
+column was created (2026-09-22) and pinned by a test. A write to an id the column does not have is
+accepted at 200 and **dropped silently**, which here would look exactly like the feature failing.
+
+⚠️⚠️ **THE AMOUNT COMES OFF THE ROW, AND THAT IS THE WHOLE COST OF THIS ROUTE.** A monday webhook
+carries an item id and a status label — no line items — so the only price this service can see is
+the one number the Command Center wrote. **The Stripe page therefore shows ONE line**
+(`CASH_PAY_LINE_LABEL`, which names the goods and carries no figure) rather than the three products
+the rep quoted. Rebuilding those lines here would mean re-implementing the pricing rule against the
+board's product columns: the second copy of a money rule this whole design exists to avoid. The
+itemisation lives where it is computed — the Command Center card the rep reads from.
+`centsFromAmountText` parses the digits and **never multiplies a float by 100** (the Command
+Center's own note records that costing a cent on a real order), and an unreadable amount is
+**null, never 0** — zero is a price, "we could not read the price" is not.
+
+⚠️ **`CASH_PAY_WEBHOOK_SECRET`, deliberately NOT `MONDAY_WEBHOOK_SECRET`.** That variable is
+**unset** on this service, so the coinsurance webhook's own check is inert — and monday's
+"send a webhook" automation sends no `authorization` header, so **setting it would start 401-ing
+the live pay-secondary flow.** Sharing the name would make turning auth on here break something
+else silently. Unset disables this route (503), as `CASH_PAY_SERVICE_TOKEN` does. Accepted from the
+`authorization` header **or** `?key=`, because a board automation may not let you set a header; the
+query form is the one that certainly works, the header is preferable where monday offers it.
+
+⚠️ **The challenge handshake is answered BEFORE the secret check.** Monday posts it when the URL is
+saved, before anything is configured on their side; checking first makes the webhook unsaveable.
+
+⚠️ **The label guard is what stops a "Send to patient" press minting a second link.** The
+automation should fire on a change *to* "Generate link" and nothing else, but automations get
+rebuilt, and an endpoint that mints a payment link must not rest on somebody else's radio button.
+An unreadable label reads as *not the trigger* and skips.
+
+⚠️ **A live link is returned, never replaced.** Two live links means the patient holds two, and
+paying the older one charges last week's price. Replacing one is a deliberate, visible act: clear
+the Cash Pay Link cell on the board, then press Generate again. Nothing is re-written to the row on
+that path — writing the current amount back would leave the board stating a price the existing link
+does not charge.
+
+⚠️ **It answers 200 once it has decided the request is ours, and writes the refusal to the BOARD**
+(*Link failed*). Monday retries a non-2xx and eventually stops delivering; a refusal is a fact
+about the order, not a broken endpoint — and the rep's only other signal is a link that never
+appears. The trigger is **cleared last**, after the link is on the board: clearing re-arms the
+button (monday takes a status write onto its own value at 200 and fires nothing, so a column parked
+on *Generate link* makes every later press a silent no-op), and clearing early invites a second
+press that mints a second link.
+
+`/api/cash-pay/create-link` **stays**: it is correct, tested, and takes the itemised lines this
+route cannot. It is not what the board calls.
+
 ### Not built
 
 The **15-day reminder loop** and a **branded cash-pay page** on the frontend. The reminder is a

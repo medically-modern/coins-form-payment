@@ -10,8 +10,14 @@
 // `metadata.service === "cash-pay"` — a discriminator the existing flow already
 // sets on its own sessions as "pay-secondary".
 
-const { getOrder, storeCashPayLink, recordCashPayment } = require("./monday");
-const { mintRefusal, lineRefusal, money, paymentLinkPayload, etDateString } = require("./rules");
+const { getOrder, storeCashPayLink, recordCashPayment, setCashPayAction } = require("./monday");
+const {
+  mintRefusal, lineRefusal, money, paymentLinkPayload, etDateString,
+  centsFromAmountText, eventStatusLabel, boardLineItems,
+} = require("./rules");
+const {
+  ORDER_BOARD_ID, ORDER_COLUMNS, CASH_PAY_ACTION_INDEX, CASH_PAY_ACTION_GENERATE_LABEL,
+} = require("./config");
 
 /**
  * Service auth.
@@ -36,6 +42,42 @@ function requireService(req, res) {
   /* Length-then-value: a mismatch of length leaks nothing a timing attack can
      use, and both sides are configuration rather than user input. */
   if (got.length !== expected.length || got !== expected) {
+    res.status(401).json({ error: "Unauthorized" });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The cash pay webhook's shared secret.
+ *
+ * ⚠️⚠️ **DELIBERATELY NOT `MONDAY_WEBHOOK_SECRET`.** That variable is unset on
+ * this service, so the coinsurance webhook's own check is inert — and monday's
+ * "send a webhook" automation sends no `authorization` header, so *setting* it
+ * would start 401-ing the live pay-secondary flow. Reusing the name would make
+ * turning auth on here break something else silently.
+ *
+ * ⚠️ **Unset disables the route**, exactly as `requireService` does above. An
+ * endpoint that mints Stripe payment links must never be open because somebody
+ * forgot to configure it.
+ *
+ * Accepted from the `authorization` header **or** a `?key=` query parameter,
+ * because a monday board automation may not let you set a header. The query
+ * form is the one that certainly works; prefer the header where monday offers
+ * it, since a URL can end up in a log.
+ */
+function requireWebhookSecret(req, res) {
+  const expected = process.env.CASH_PAY_WEBHOOK_SECRET;
+  if (!expected) {
+    console.warn("[cash-pay/wh] Refused — CASH_PAY_WEBHOOK_SECRET is not set");
+    res.status(503).json({ error: "The cash pay webhook is not configured on this server." });
+    return false;
+  }
+  const header = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  const query = String(req.query?.key || "");
+  const got = header || query;
+  if (got.length !== expected.length || got !== expected) {
+    console.warn("[cash-pay/wh] Refused — bad secret");
     res.status(401).json({ error: "Unauthorized" });
     return false;
   }
@@ -102,6 +144,126 @@ function register(app, { stripe, limiter }) {
     } catch (err) {
       console.error("[cash-pay] create-link failed:", err.message);
       res.status(500).json({ error: "Could not create the payment link. Please try again." });
+    }
+  });
+
+  /**
+   * POST /webhook/monday/cash-pay
+   *
+   * The live route. A rep presses **Generate** in the Command Center; the app
+   * writes **Cash Pay Amount** and then flips **Cash Pay Action** to "Generate
+   * link"; a board automation turns that into this request; this mints the
+   * Stripe link and writes it back. Exactly the shape the coinsurance flow has
+   * used for a year — the board is the trigger, and no browser ever holds a
+   * token.
+   *
+   * ⚠️⚠️ **THE AMOUNT COMES OFF THE ROW, NOT OUT OF THIS REQUEST.** A monday
+   * webhook carries an item id and a status label, so the Command Center has to
+   * put the price somewhere this service can read it, and that somewhere is
+   * Cash Pay Amount. The pricing rule stays in one repo; what crosses is a
+   * number the rep has already seen on screen.
+   *
+   * ⚠️ **It always answers 200 once it has decided the request is ours.**
+   * Monday retries a non-2xx and eventually stops delivering altogether, and a
+   * refusal here is a fact about the order rather than a broken endpoint — so
+   * the refusal is written to the BOARD ("Link failed") where a rep sees it,
+   * and the response only tells monday not to try again.
+   */
+  app.post("/webhook/monday/cash-pay", async (req, res) => {
+    /* Monday posts this once when the webhook URL is saved and expects it
+       echoed. It arrives before any secret is configured on their side, so the
+       handshake is answered before the auth check — the same order the
+       coinsurance webhook uses. */
+    if (req.body?.challenge) {
+      console.log("[cash-pay/wh] Challenge received");
+      return res.json({ challenge: req.body.challenge });
+    }
+
+    if (!requireWebhookSecret(req, res)) return;
+
+    const event = req.body?.event;
+    if (!event) return res.status(400).json({ error: "No event in payload" });
+
+    const itemId = String(event.pulseId ?? "");
+    const boardId = String(event.boardId ?? "");
+    if (!itemId || itemId === "undefined") return res.status(400).json({ error: "Missing pulseId" });
+
+    /* ⚠️ The board guard is not ceremony. `getOrder` refuses an item on another
+       board, but refusing here means a stray automation on some other board
+       never reaches monday at all. */
+    if (boardId && boardId !== ORDER_BOARD_ID) {
+      console.log(`[cash-pay/wh] Ignoring — wrong board (${boardId})`);
+      return res.json({ ok: true, skipped: true, reason: "wrong board" });
+    }
+
+    /* ⚠️⚠️ **THE LABEL GUARD IS WHAT STOPS A "SEND TO PATIENT" PRESS MINTING A
+       SECOND LINK.** The automation should fire on a change *to* "Generate
+       link" and nothing else, but automations get rebuilt, and an endpoint that
+       mints a payment link must not rely on somebody else's radio button. An
+       unreadable label reads as "not the generate trigger" and skips. */
+    const label = eventStatusLabel(event, ORDER_COLUMNS.CASH_PAY_ACTION);
+    if (label !== CASH_PAY_ACTION_GENERATE_LABEL) {
+      console.log(`[cash-pay/wh] Ignoring item ${itemId} — label "${label}" is not the mint trigger`);
+      return res.json({ ok: true, skipped: true, reason: "not the generate trigger" });
+    }
+
+    /* Written to the board on every refusal below, because the rep's only other
+       signal is a link that never appears. Swallows its own failure: a board
+       write that fails must not turn a refusal into a monday retry. */
+    const markFailed = async (why) => {
+      console.warn(`[cash-pay/wh] Item ${itemId} refused: ${why}`);
+      try { await setCashPayAction(itemId, CASH_PAY_ACTION_INDEX.FAILED); }
+      catch (err) { console.error("[cash-pay/wh] Could not write Link failed:", err.message); }
+      return res.json({ ok: true, skipped: true, reason: why });
+    };
+
+    try {
+      const order = await getOrder(itemId);
+      const refusal = mintRefusal(order);
+      if (refusal) return await markFailed(refusal);
+
+      /* ⚠️ **A LIVE LINK IS NEVER REPLACED HERE, and that is the rule rather
+         than a missing feature.** Two live links means the patient holds two,
+         and paying the older one charges last week's price. Pressing Generate
+         on an order that already has one returns it and clears the trigger.
+         Replacing a link is a deliberate, visible act: clear the Cash Pay Link
+         cell on the board, then press Generate again.
+         ⚠️ Nothing is re-written to the row on this path — writing the current
+         Cash Pay Amount back would leave the board stating a price the existing
+         link does not charge. */
+      if (order.cashPayLink) {
+        console.log(`[cash-pay/wh] Item ${itemId} already has a link — leaving it`);
+        await setCashPayAction(itemId, null);
+        return res.json({ ok: true, itemId, url: order.cashPayLink, existing: true });
+      }
+
+      const totalCents = centsFromAmountText(order.cashPayAmount);
+      if (totalCents === null) {
+        return await markFailed("Cash Pay Amount is blank or unreadable on this order.");
+      }
+
+      const lines = boardLineItems(totalCents);
+      const badLines = lineRefusal(lines, totalCents);
+      if (badLines) return await markFailed(badLines);
+
+      const link = await stripe.paymentLinks.create(paymentLinkPayload({
+        itemId: order.itemId,
+        patientName: order.name,
+        lines,
+        orderNumber: order.cahOrderNumber,
+      }));
+
+      await storeCashPayLink(order.itemId, { url: link.url, totalCents });
+      /* Clear LAST: it is what re-arms the button, and re-arming it before the
+         link is on the board would invite a second press that mints a second
+         link. */
+      await setCashPayAction(order.itemId, null);
+
+      console.log(`[cash-pay/wh] Link minted for order ${order.itemId}: ${money(totalCents)} (${link.id})`);
+      res.json({ ok: true, itemId: order.itemId, url: link.url, amount: (totalCents / 100).toFixed(2) });
+    } catch (err) {
+      console.error("[cash-pay/wh] Mint failed:", err.message);
+      return await markFailed("The payment service could not mint the link — try again.");
     }
   });
 

@@ -6,7 +6,7 @@
 // patient is charged, and for how much, in a codebase whose only other gate is
 // `npm run build` (CLAUDE.md §4).
 
-const { LIMITS, CASH_PAY_LABEL } = require("./config");
+const { LIMITS, CASH_PAY_LABEL, CASH_PAY_LINE_LABEL } = require("./config");
 
 /** Is this order's payer Cash Pay? An EXACT match on the trimmed label. */
 function isCashPayOrder(payerLabel) {
@@ -158,6 +158,56 @@ function paymentLinkPayload({ itemId, patientName, lines, orderNumber }) {
   };
 }
 
+/**
+ * The amount on the board, as whole cents — or null when it cannot be read.
+ *
+ * ⚠️⚠️ **PARSED FROM THE DIGITS, NEVER BY MULTIPLYING A FLOAT BY 100.** The
+ * Command Center records that `Math.round(n * 100)` costs a cent on a real
+ * order: 269.775 is stored as 269.77499999999998, scales to 26977.4999…, and
+ * rounds DOWN. This never floats at all — it splits on the decimal point and
+ * adds — so a two-decimal amount is exact by construction and a value with
+ * more precision than cents is refused rather than silently rounded.
+ *
+ * ⚠️ A blank, a dash or anything unparseable is **null, never 0**. Zero is a
+ * price; "we could not read the price" is not, and minting for it would take
+ * the wrong money. The caller turns null into a refusal the rep can see.
+ */
+function centsFromAmountText(raw) {
+  const s = String(raw ?? "").trim().replace(/[$,\s]/g, "");
+  if (!/^\d+(\.\d{1,2})?$/.test(s)) return null;
+  const [whole, frac = ""] = s.split(".");
+  /* Beyond nine digits `Number(whole) * 100` stops being exact. Nothing real
+     comes close (the ceiling is $2,000) so this is a refusal, not a rounding. */
+  if (whole.length > 9) return null;
+  return Number(whole) * 100 + Number(frac.padEnd(2, "0"));
+}
+
+/**
+ * The status label carried by a monday automation's webhook payload.
+ *
+ * ⚠️ Monday sends a status change in several shapes depending on how the
+ * automation was built, and an unrecognised shape must read as **no label**
+ * rather than as a match — the caller mints a Stripe link on a match, so
+ * guessing in the permissive direction is how a "Send to patient" press mints
+ * a second link.
+ */
+function eventStatusLabel(event, columnId) {
+  const direct = event?.value;
+  const byColumn = columnId ? event?.columnValues?.[columnId] : undefined;
+  for (const cand of [direct?.label?.text, direct?.label, byColumn?.label?.text, byColumn?.label]) {
+    if (typeof cand === "string" && cand.trim()) return cand.trim();
+  }
+  return "";
+}
+
+/**
+ * The single line item a board-minted link carries. See `CASH_PAY_LINE_LABEL`
+ * in ./config.js for why it is one line and not the three the rep quoted.
+ */
+function boardLineItems(totalCents) {
+  return [{ label: CASH_PAY_LINE_LABEL, quantity: 1, amountCents: totalCents }];
+}
+
 /** The Eastern calendar day, as monday's date columns want it (YYYY-MM-DD). */
 function etDateString(now = new Date()) {
   /* ⚠️ Eastern, never UTC. Every date on these boards is Eastern wall clock,
@@ -176,4 +226,7 @@ module.exports = {
   money,
   paymentLinkPayload,
   etDateString,
+  centsFromAmountText,
+  eventStatusLabel,
+  boardLineItems,
 };

@@ -26,6 +26,10 @@ const ORDER_COLUMNS = {
   CASH_PAY_LINK_SENT: "date_mm7d7wxe",       // Cash Pay Link Sent
   CASH_PAY_PAID_DATE: "date_mm7dejzt",       // Cash Pay Paid Date
   STRIPE_CHARGE_ID:   "text_mm7dkma5",       // Stripe Charge ID
+
+  // The trigger column, added 2026-09-22. The Command Center flips it; a board
+  // automation turns that into the webhook below. See CASH_PAY_ACTION_INDEX.
+  CASH_PAY_ACTION:    "color_mm7e3rxj",      // Cash Pay Action
 };
 
 // ⚠️ Status columns are written by label INDEX, and monday assigns those
@@ -42,6 +46,18 @@ const ORDER_STATUS_INDEX = {
   PAID_CASH: 6,
 };
 const CASH_PAY_PAYER_INDEX = 152;
+
+// ⚠️ Read back from the live `settings_str` on 2026-09-22, the day the column
+// was created. Monday derives a new label's id from its COLOUR, not from the
+// index asked for, so these are 0 / 3 / 2 rather than 0 / 1 / 2 — read them,
+// never infer them.
+const CASH_PAY_ACTION_INDEX = {
+  GENERATE: 0,   // "Generate link"   — written by the Command Center, mints below
+  SEND: 3,       // "Send to patient" — written by the Command Center, texts (board automation)
+  FAILED: 2,     // "Link failed"     — written by THIS service when a mint refuses
+};
+/** The board's own spelling of the mint trigger, for reading an event back. */
+const CASH_PAY_ACTION_GENERATE_LABEL = "Generate link";
 /** The board's own spelling, for reads. Written by index, never by text. */
 const CASH_PAY_LABEL = "Cash Pay";
 
@@ -65,11 +81,32 @@ const LIMITS = {
   MAX_LABEL_CHARS: 250,
 };
 
+/**
+ * What the patient sees on the Stripe page when the link is minted from the
+ * BOARD rather than from an itemised request.
+ *
+ * ⚠️⚠️ **ONE LINE, AND THAT IS THE WHOLE COST OF THE WEBHOOK ROUTE.** A monday
+ * webhook carries an item id and nothing else, so the only price this service
+ * can see is **Cash Pay Amount** on the row — one number. Rebuilding the three
+ * product lines here would mean re-implementing the Command Center's pricing
+ * rule against the board's product columns, which is precisely the second copy
+ * of a money rule that must not exist. The itemisation lives where it is
+ * computed: on the Command Center card the rep reads from, and in the text the
+ * patient receives.
+ *
+ * The label therefore names what is being bought and never prices it, so it
+ * cannot be wrong about the amount however the quote was built.
+ */
+const CASH_PAY_LINE_LABEL = "Medically Modern — diabetes supplies";
+
 module.exports = {
   ORDER_BOARD_ID,
   ORDER_COLUMNS,
   ORDER_STATUS_INDEX,
   CASH_PAY_PAYER_INDEX,
+  CASH_PAY_ACTION_INDEX,
+  CASH_PAY_ACTION_GENERATE_LABEL,
   CASH_PAY_LABEL,
+  CASH_PAY_LINE_LABEL,
   LIMITS,
 };

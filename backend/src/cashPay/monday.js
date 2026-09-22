@@ -10,7 +10,7 @@
 // nothing throws (CLAUDE.md §6). `query()` reads `errors[]` and throws, so a
 // failed write cannot report success.
 
-const { ORDER_BOARD_ID, ORDER_COLUMNS, ORDER_STATUS_INDEX } = require("./config");
+const { ORDER_BOARD_ID, ORDER_COLUMNS, ORDER_STATUS_INDEX, CASH_PAY_ACTION_INDEX } = require("./config");
 
 const API_URL = "https://api.monday.com/v2";
 const MAX_RETRIES = 3;
@@ -87,6 +87,7 @@ async function getOrder(itemId) {
     cashPayLinkSent:   by[ORDER_COLUMNS.CASH_PAY_LINK_SENT] ?? "",
     cashPayPaidDate:   by[ORDER_COLUMNS.CASH_PAY_PAID_DATE] ?? "",
     stripeChargeId:    by[ORDER_COLUMNS.STRIPE_CHARGE_ID] ?? "",
+    cashPayAction:     by[ORDER_COLUMNS.CASH_PAY_ACTION] ?? "",
   };
 }
 
@@ -99,6 +100,26 @@ async function storeCashPayLink(itemId, { url, totalCents }) {
      and Generate still offered, which is the recoverable one. */
   await write(itemId, ORDER_COLUMNS.CASH_PAY_AMOUNT, String((totalCents / 100).toFixed(2)));
   await write(itemId, ORDER_COLUMNS.CASH_PAY_LINK, url);
+}
+
+/**
+ * The trigger column, written back.
+ *
+ * ⚠️ **This is the column an automation fires on, so what is written here
+ * matters twice.** Clearing it on success is what lets a rep press Generate
+ * again at all: monday takes a status write onto its own value at 200, fires
+ * nothing and records no activity, so a column parked on "Generate link"
+ * would make every later press a silent no-op. "Link failed" exists for the
+ * same reason in the other direction — a mint that refuses must say so on the
+ * board, because the rep's only other signal is a link that never appears.
+ *
+ * ⚠️ Neither write can re-trigger the mint: the board automation fires on a
+ * change **to "Generate link"** specifically, never on any change.
+ */
+function setCashPayAction(itemId, index) {
+  /* A status clears with `{}`. Never `{"index": null}`, which monday reads as
+     an unreadable value rather than as empty. */
+  return write(itemId, ORDER_COLUMNS.CASH_PAY_ACTION, index === null ? {} : { index });
 }
 
 /* ⚠️ Nothing here writes **Cash Pay Link Sent** `date_mm7d7wxe`. That column
@@ -121,4 +142,4 @@ async function recordCashPayment(itemId, { chargeId, date }) {
   await write(itemId, ORDER_COLUMNS.ORDER_STATUS, { index: ORDER_STATUS_INDEX.PAID_CASH });
 }
 
-module.exports = { getOrder, storeCashPayLink, recordCashPayment };
+module.exports = { getOrder, storeCashPayLink, recordCashPayment, setCashPayAction, CASH_PAY_ACTION_INDEX };
