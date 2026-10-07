@@ -105,6 +105,8 @@ function buildPaymentMessage(patientName, paymentLink, amount) {
     `Hi ${firstName}, this is Medically Modern. Your insurance has processed your claim and there is a remaining balance. View your statement below.`,
     ``,
     `${paymentLink}`,
+    ``,
+    `Feel free to text us with any questions!`,
   ].join("\n");
 }
 
@@ -113,11 +115,12 @@ function buildPaymentMessage(patientName, paymentLink, amount) {
  *
  * ⚠️ **Mirrors `buildPaymentMessage` deliberately** (Josh, 2026-09-22: *"the
  * text should mirror what coins form does"*) — same greeting, same "this is
- * Medically Modern", same blank line, same bare link on its own last line. A
- * patient who has had one of these before should not be able to tell the two
- * apart, and the link being alone on the final line is what makes it tappable
- * in every SMS client. Only the REASON differs: there is no insurance claim
- * here, they are paying for the supplies up front.
+ * Medically Modern", same blank line, same bare link alone on its own line,
+ * same "Feel free to text us with any questions!" closing line (Brandon,
+ * 2026-09-25). A patient who has had one of these before should not be able to
+ * tell the two apart, and the link being alone on its line — nothing touching
+ * it — is what makes it tappable in every SMS client. Only the REASON differs:
+ * there is no insurance claim here, they are paying for the supplies up front.
  *
  * ⚠️ The amount is optional for the same reason it is in buildPaymentMessage —
  * a blank one degrades to "your order" rather than texting a patient "$NaN".
@@ -129,6 +132,8 @@ function buildCashPayMessage(patientName, paymentLink, amount) {
     `Hi ${firstName}, this is Medically Modern. Your diabetes supplies come to ${amountStr}. You can pay securely below.`,
     ``,
     `${paymentLink}`,
+    ``,
+    `Feel free to text us with any questions!`,
   ].join("\n");
 }
 
@@ -138,6 +143,8 @@ function buildFollowUpMessage(patientName, paymentLink) {
     `Hi ${firstName}, this is Medically Modern. This is a friendly reminder that you have an outstanding balance after your insurance processed your claim. View your statement below.`,
     ``,
     `${paymentLink}`,
+    ``,
+    `Feel free to text us with any questions!`,
   ].join("\n");
 }
 
