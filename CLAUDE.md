@@ -79,8 +79,9 @@ Two Monday webhooks drive it: `POST /webhook/monday` (mint a pay link) and
 ## 4. ⚠️ There is NO linter and NO typecheck script, and the tests cover ONE slice
 
 `npm test` (`node --test`, no dependency added) runs **`backend/test/*.test.js`**, which today is
-**the cash pay rules and nothing else** — the amounts, the refusals, the Stripe payload. It exists
-because that slice decides whether a patient is charged and for how much (§8).
+**the cash pay rules** — the amounts, the refusals, the Stripe payload — plus one guard
+(`noEstimator.test.js`, §5) that fails if an OOP estimator is ever ported back into `src/`. The
+cash pay tests exist because that slice decides whether a patient is charged and for how much (§8).
 
 Everywhere else:
 
@@ -95,40 +96,44 @@ Everywhere else:
 
 ---
 
-## 5. ⚠️ `src/components/OopEstimateCard.tsx` is DEAD CODE — but `src/lib/oopEstimator.ts` is still checked
+## 5. There is NO OOP estimator in this repo any more — the Stedi backend owns every out-of-pocket number
 
-Verified 2026-09-17: **nothing imports `OopEstimateCard`**, and its text is absent from the built
-bundle (`dist/`), so Vite tree-shakes it out. It renders for nobody. `src/lib/oopEstimator.ts` is
-reachable only through that dead component, so **the estimator in this repo currently affects no
-patient-facing number**. Don't assume a bug there is live; equally, don't assume the file is
-therefore free to drift, because:
+**Removed 2026-10-07** in the OOP overhaul: `src/lib/oopEstimator.ts` (a hand-synced copy of the
+rate table, zero-OOP payer set, Medicaid labels and deductible/coinsurance math),
+`src/components/OopEstimateCard.tsx` (the card that was its only caller — never mounted, never in
+the bundle) and `src/lib/types.ts` (the `Patient` interface only that card used). Deleting them
+changed the built JS by **zero bytes**; they were dead code from the day they were ported.
 
-**`src/lib/oopEstimator.ts` is a registered consumer of the org's canonical payer policy.**
+**Where the numbers live now.** The Stedi backend (`medicallymodern1/stedi-monday-integration`,
+Python, Railway) resolves benefits from the 271, applies every payer override / tier rule /
+carve-out, holds the rate table, and writes the result to Monday. Frontends are **readers** of
+those columns and contain no rate table, no zero-OOP set, no Medicaid label set and no
+deductible/coinsurance arithmetic. The columns are on **Profile Send Off** `18406352652` (and
+**Subscription Board - Updated** `18407459988`, same ids except where noted): the estimates
+`text_bnf_first_wmon` (first order incl. monitor), `text_mm4tvsk6` (first order, no monitor) and
+`text_mm4ttaa6` (recurring; `text_mm404p7d` on the Subscription board), with `text_bnf_oop_note`,
+`text_bnf_oop_lines`, the resolved inputs (`text_bnf_coins_cgm` / `_dme`, `text_bnf_copay_cgm` /
+`_dme`, `text_bnf_ded_used`, `text_bnf_oop_used`), `color_bnf_confidence` (High/Medium/Low),
+`dropdown_bnf_flags`, `text_bnf_reasons` and `text_bnf_version` (blank = not resolved yet). A
+surface that needs a number the backend did not pre-compute calls
+`POST {STEDI_BACKEND_URL}/oop/estimate`.
 
-- **Canonical:** `medically-modern/command-center-test` → `src/lib/shared/payerPolicy.json`
-  (rate schedule, zero-OOP payers, coinsurance overrides, the Medicaid / Medicare-style /
-  Aetna-style sets).
-- **The check:** that repo's `scripts/check-payer-policy.mjs` reads **this file** and fails when it
-  disagrees — on its CI, and on a weekday cron at 13:10 UTC.
-- **The other copies:** command-center-test's `welcomeCall/oopEstimator.ts` and
-  `profile/oopEstimate.ts`, and both copies in `reorder-patient-form` (`backend/src/` and `docs/`).
+**This repo reads none of them.** It shows **adjudicated ERA line items** off the Secondary Claims
+board's subitems (§3) — what the secondary payer actually said the patient owes — and takes that
+payment. It never shows an estimate and has no reason to. If somebody asks for "the OOP estimate"
+on this page, the answer is that this page is downstream of adjudication, where an estimate no
+longer means anything.
 
-So a payer changed here and not there turns another repo's CI red, and vice versa. A **deliberate**
-difference goes in that JSON under this consumer's `deviations` with a reason. As of 2026-09-17 this
-copy has none — it matches canonical exactly.
+**The payer-policy check no longer involves this repo.** `command-center`'s `payerPolicy.json`
+is now a **generated snapshot of the backend's export** (`exports/payer_policy.json`), not a
+hand-maintained canonical, and this repo is no longer one of its registered consumers. A payer
+added or changed in the backend reaches patients through the Monday columns above; nothing in
+this tree needs to be touched, and nothing in this tree is checked against it.
 
-⚠️ This repo had drifted furthest of the four: its zero-OOP set held **only** Medicare A&B, so
-NYSHIP, Aetna Medicare and United Medicare were all run through the full deductible + coinsurance
-path. Fixed 2026-09-17. If the card is ever mounted, that is the difference between quoting a
-United Medicare CGM fill at **$105.93** and at **$0**.
-
-⚠️ **The Python originals are checked by NOBODY.** `claim_assumptions.py` and `insurance_rules.py`
-in `medicallymodern1/stedi-monday-integration` (a **different GitHub org**, FastAPI on Render) are
-what this file's header cites as its source. Nothing can read them from this org. Sync by hand and
-say so.
-
-⚠️ The file header still says *"Out-of-Pocket Estimator for the Welcome Call page"* — it was ported
-from command-center and the wording was never updated. There is no Welcome Call page here.
+⚠️ **Do not re-port an estimator here.** `backend/test/noEstimator.test.js` fails the moment a
+rate table, a zero-OOP set, a Medicaid label set or an `estimateOop` reappears under `src/`. The
+second copy of a money rule is the hand-synced hazard this whole overhaul exists to remove (§8
+makes the same argument for cash pay pricing).
 
 ---
 
@@ -156,8 +161,8 @@ from command-center and the wording was never updated. There is no Welcome Call 
 | A payment didn't record on Monday | `POST /webhook/stripe` in `backend/src/index.js`, and §6 on the raw-body ordering |
 | A patient can't open their link | `backend/src/auth.js`; token TTL is 30 days, JWT 24h |
 | The receipt is wrong | `GET /api/receipt`, and `COMPANY` in `backend/src/config.js` |
-| A payer is $0 on one screen and charged on another | §5. Run command-center-test's `node scripts/check-payer-policy.mjs` |
-| "The OOP card is broken" | §5 — it is not mounted and not in the bundle; it renders for nobody |
+| A payer is $0 on one screen and charged on another | §5 — this page shows the ERA, not an estimate. The number here is what the secondary payer adjudicated; the estimate lives in the Stedi backend's Monday columns |
+| "The OOP card / estimate is wrong" | §5 — there is no estimate on this page and no estimator in this repo (removed 2026-10-07). Look in the Stedi backend |
 | A link/text didn't go out | the two `POST /webhook/monday*` routes, then `backend/src/smsQueue.js` |
 | A cash pay link wasn't minted / the button said no | §8 — `backend/src/cashPay/rules.js` `mintRefusal` (the order's state) and `lineRefusal` (the amount). A **503** means `CASH_PAY_SERVICE_TOKEN` is unset, which disables the route on purpose |
 | A cash payment didn't record on Monday | §8 — the `metadata.service === "cash-pay"` branch in `/webhook/stripe`, then `cashPay/monday.js` `recordCashPayment`. It returns 500 so Stripe retries; check the logs for `[cash-pay]` |
