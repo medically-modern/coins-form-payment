@@ -9,7 +9,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
-  isCashPayOrder, mintRefusal, lineRefusal, money, paymentLinkPayload, etDateString,
+  isCashPayOrder, mintRefusal, marksPaidCash, lineRefusal, money, paymentLinkPayload, etDateString,
 } = require("../src/cashPay/rules");
 const { LIMITS } = require("../src/cashPay/config");
 
@@ -51,11 +51,22 @@ test("⚠️ an already-paid order is refused — either payment column alone", 
   assert.match(mintRefusal(cashOrder({ cashPayPaidDate: "2026-08-19" })), /already been paid/);
 });
 
-test("⚠️ an order Cardinal has already taken is refused by its CAH number", () => {
-  /* Debbie's historical order sits at Order Status "Paid Cash" while the order
-     is Delivered. The CAH number is positive evidence it has been placed,
-     where the status label is ambiguous. */
-  assert.match(mintRefusal(cashOrder({ cahOrderNumber: "1120157406" })), /already been placed/);
+test("⚠️ an order Cardinal has already taken MAY be minted (2026-10-09)", () => {
+  /* It used to be refused by its CAH number, which stranded a real order
+     booked with Cardinal minutes before its link was pressed. Payment after
+     ordering is a real path; the payment columns are what stop a second charge. */
+  assert.equal(mintRefusal(cashOrder({ cahOrderNumber: "1120157406" })), "");
+  assert.match(mintRefusal(cashOrder({ cahOrderNumber: "1120157406", stripeChargeId: "pi_3abc" })), /already been paid/);
+});
+
+test("⚠️ a payment moves Order Status to Paid Cash only while the order is unplaced", () => {
+  /* Paid Cash opens the ordering gate. On an order Cardinal already has, the
+     status is its real progress and must not be overwritten. */
+  assert.equal(marksPaidCash(cashOrder()), true);
+  assert.equal(marksPaidCash(cashOrder({ cahOrderNumber: "  " })), true);
+  assert.equal(marksPaidCash(cashOrder({ cahOrderNumber: "1122377587" })), false);
+  /* A missing order keeps the old behaviour: the writes fail and Stripe retries. */
+  assert.equal(marksPaidCash(null), true);
 });
 
 test("an insured order is refused, and a missing one says so", () => {

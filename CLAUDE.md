@@ -180,7 +180,16 @@ Mounted from `backend/src/index.js` in two places and touching nothing else.
 
 The Command Center prices the order from Cardinal's costs, presses Generate, and this mints the
 link. When the patient pays, Stripe's webhook records it and flips **Order Status → Paid Cash**,
-which is what lets that order be placed with Cardinal at all. The whole path — intake, pricing,
+which is what lets that order be placed with Cardinal at all.
+
+⚠️ **A link may also be minted AFTER the order went to Cardinal** (decided 2026-10-09: *"we need
+to be able to generate the link post ordering"*). `mintRefusal` used to refuse an order carrying a
+CAH Order Number; that stranded a real order booked with Cardinal nine minutes before its link was
+pressed. Only the payment columns refuse now. When such a link is paid, `rules.marksPaidCash` says
+no and **Order Status is left alone**: the charge id and paid date are written, but the status
+already carries the order's real progress (Process Claim, Shipped…) and overwriting it would fire
+the board's Order Status automations. An order paid by phone or cheque carries no payment columns,
+so a link can be minted for it too, and the rep is the check there. The whole path — intake, pricing,
 the ordering gate, the card — is `command-center-test`'s CLAUDE.md §5.48.
 
 ### ⚠️⚠️ A Stripe PAYMENT LINK, not a Checkout Session
@@ -222,8 +231,9 @@ by a test.
   (Cardinal's cost x1.25, rounded per line, plus a $10 floor under $10 of markup) and this service
   does not re-implement it: a second copy of a money rule in a second repo is the hand-synced
   hazard, and its drift would be a patient charged an amount no screen ever showed. What this
-  service owes instead is the ORDER's own state (`mintRefusal` — cash pay, unpaid, not already
-  with Cardinal) and a sanity boundary on the number (`lineRefusal`).
+  service owes instead is the ORDER's own state (`mintRefusal` — cash pay and unpaid; an order
+  already with Cardinal is allowed since 2026-10-09) and a sanity boundary on the number
+  (`lineRefusal`).
 - ⚠️ **The lines must ADD UP to the stated total.** Stripe charges the sum of what it is handed, so
   a total computed a second way can differ by a cent from the lines printed above it. A
   disagreement is a refusal, never a silent preference for one.
@@ -245,7 +255,9 @@ this service has: the ordering gate then holds an order the patient has already 
 
 ⚠️ **`recordCashPayment` writes the STATUS LAST** — Order Status → Paid Cash is what opens that
 gate, so writing it before the charge id would open it against an order whose payment columns are
-still empty.
+still empty. ⚠️ And **only when the order has no CAH Order Number** (`rules.marksPaidCash`):
+`handleStripeSession` reads the order first, and a failed read throws, so Stripe retries rather than
+the status being guessed.
 
 ### The text is the BOARD's job
 

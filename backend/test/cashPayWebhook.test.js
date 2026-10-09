@@ -41,6 +41,23 @@ test("⚠️ a cash pay session with no itemId is CLAIMED, not passed on", async
   }), true);
 });
 
+test("⚠️ a payment reads the order and lets marksPaidCash decide Order Status", () => {
+  /* Source scan: a link can be minted after the order went to Cardinal, and
+     then Paid Cash would overwrite the order's real status. The rule is pure
+     and tested in cashPayRules.test.js; this pins that it is wired in. */
+  const src = read("src/cashPay/index.js");
+  const at = src.indexOf("async function handleStripeSession(");
+  assert.ok(at > -1);
+  const body = src.slice(at, src.indexOf("\n}\n", at));
+  assert.match(body, /await getOrder\(itemId\)/);
+  assert.match(body, /marksPaidCash\(order\)/);
+  assert.match(body, /recordCashPayment\(itemId, \{[^}]*markPaidCash[^}]*\}\)/);
+  /* And the writer honours it: no unconditional Order Status write. */
+  const monday = read("src/cashPay/monday.js");
+  const w = monday.slice(monday.indexOf("async function recordCashPayment("));
+  assert.match(w.slice(0, w.indexOf("\n}\n")), /if \(markPaidCash\) \{\s*await write\(itemId, ORDER_COLUMNS\.ORDER_STATUS/);
+});
+
 test("⚠️ index.js branches on the service and RETURNS", () => {
   /* Source scan: without the return, both branches run on one session. */
   const src = read("src/index.js");

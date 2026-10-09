@@ -135,11 +135,16 @@ function setCashPayAction(itemId, index) {
  * Center's ordering gate this order may be placed with Cardinal; writing it
  * before the charge id would open that gate against an order whose payment
  * columns are still empty, which is the exact thing the gate exists to stop.
+ *
+ * ⚠️ `markPaidCash: false` leaves Order Status alone, for an order Cardinal
+ * already has (`rules.marksPaidCash`): its status is its real progress by then.
  */
-async function recordCashPayment(itemId, { chargeId, date }) {
+async function recordCashPayment(itemId, { chargeId, date, markPaidCash = true }) {
   await write(itemId, ORDER_COLUMNS.STRIPE_CHARGE_ID, String(chargeId));
   await write(itemId, ORDER_COLUMNS.CASH_PAY_PAID_DATE, { date });
-  await write(itemId, ORDER_COLUMNS.ORDER_STATUS, { index: ORDER_STATUS_INDEX.PAID_CASH });
+  if (markPaidCash) {
+    await write(itemId, ORDER_COLUMNS.ORDER_STATUS, { index: ORDER_STATUS_INDEX.PAID_CASH });
+  }
 }
 
 /**

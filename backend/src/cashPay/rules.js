@@ -20,8 +20,15 @@ const filled = (v) => String(v ?? "").trim() !== "";
  *
  * ⚠️ Ordered in the sequence a person would ask the questions, and every
  * branch is a REFUSAL rather than a silent skip: minting a link for an order
- * that is already paid, or one Cardinal has already shipped, takes money for
- * something twice.
+ * that is already paid takes money for something twice.
+ *
+ * ⚠️ **An order already placed with Cardinal MAY have a link** (decided
+ * 2026-10-09: "we need to be able to generate the link post ordering"). This
+ * used to refuse on a CAH Order Number, which stranded a real cash order that
+ * was booked with Cardinal nine minutes before its link was pressed. Paying
+ * after the goods have gone is a real path. What stops a second charge is the
+ * two payment columns above, which only the Stripe webhook writes; an order
+ * paid by phone or cheque carries neither, so there the rep is the check.
  */
 function mintRefusal(order) {
   if (!order) return "That order is not on the board.";
@@ -31,13 +38,26 @@ function mintRefusal(order) {
   if (filled(order.stripeChargeId) || filled(order.cashPayPaidDate)) {
     return "That order has already been paid.";
   }
-  /* Positive evidence it has been to Cardinal, whatever the status says — the
-     same rule the Command Center's ordering gate uses, and what refuses the
-     historical cash orders whose status was set to Paid Cash by hand. */
-  if (filled(order.cahOrderNumber)) {
-    return "That order has already been placed with Cardinal.";
-  }
   return "";
+}
+
+/**
+ * Should a payment landing move Order Status to Paid Cash?
+ *
+ * ⚠️ **Only while the order is still waiting to be placed.** Paid Cash is what
+ * tells the Command Center's ordering gate an order may go to Cardinal. On an
+ * order Cardinal already has (a CAH Order Number: positive evidence, where the
+ * status label is ambiguous) that job is done, and Order Status now carries the
+ * order's real progress (Process Claim, Shipped, Delivered…). Overwriting it
+ * would lose that and fire whatever the board hangs off an Order Status change.
+ * The charge id and paid date are written either way; they are what every
+ * reader keys "paid" on.
+ *
+ * A missing order reads as NOT placed, which is what this did before the rule
+ * existed: the writes then fail on their own and Stripe retries.
+ */
+function marksPaidCash(order) {
+  return !filled(order?.cahOrderNumber);
 }
 
 /**
@@ -222,6 +242,7 @@ function etDateString(now = new Date()) {
 module.exports = {
   isCashPayOrder,
   mintRefusal,
+  marksPaidCash,
   lineRefusal,
   money,
   paymentLinkPayload,

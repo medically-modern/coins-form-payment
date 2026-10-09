@@ -14,7 +14,7 @@ const {
   getOrder, storeCashPayLink, recordCashPayment, setCashPayAction, stampCashPayLinkSent,
 } = require("./monday");
 const {
-  mintRefusal, lineRefusal, money, paymentLinkPayload, etDateString,
+  mintRefusal, marksPaidCash, lineRefusal, money, paymentLinkPayload, etDateString,
   centsFromAmountText, eventStatusLabel, boardLineItems,
 } = require("./rules");
 const {
@@ -434,8 +434,14 @@ async function handleStripeSession(session) {
     return true; // ours, and unattributable — but NOT the other flow's
   }
 
-  await recordCashPayment(itemId, { chargeId, date: etDateString() });
-  console.log(`[cash-pay] Payment recorded for order ${itemId}: ${chargeId}`);
+  /* ⚠️ Read before writing: a link can be minted after the order went to
+     Cardinal, and then Order Status must keep the order's real progress
+     (`marksPaidCash`). A failed read throws, so Stripe retries rather than the
+     status being guessed. */
+  const order = await getOrder(itemId);
+  const markPaidCash = marksPaidCash(order);
+  await recordCashPayment(itemId, { chargeId, date: etDateString(), markPaidCash });
+  console.log(`[cash-pay] Payment recorded for order ${itemId}: ${chargeId}${markPaidCash ? "" : " (already with Cardinal; Order Status left as is)"}`);
   return true;
 }
 
