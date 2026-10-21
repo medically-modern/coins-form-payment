@@ -163,7 +163,8 @@ makes the same argument for cash pay pricing).
 | The receipt is wrong | `GET /api/receipt`, and `COMPANY` in `backend/src/config.js` |
 | A payer is $0 on one screen and charged on another | §5 — this page shows the ERA, not an estimate. The number here is what the secondary payer adjudicated; the estimate lives in the Stedi backend's Monday columns |
 | "The OOP card / estimate is wrong" | §5 — there is no estimate on this page and no estimator in this repo (removed 2026-10-07). Look in the Stedi backend |
-| A link/text didn't go out | the two `POST /webhook/monday*` routes, then `backend/src/smsQueue.js` |
+| A link/text didn't go out | the two `POST /webhook/monday*` routes, then `backend/src/smsQueue.js`; then `/health`'s `redis` (§9) |
+| Redis is down / "can't reach Redis" alert | §9 — restart the Redis service, then move every row that entered Send Invoice meanwhile out and back in |
 | A cash pay link wasn't minted / the button said no | §8 — `backend/src/cashPay/rules.js` `mintRefusal` (the order's state) and `lineRefusal` (the amount). A **503** means `CASH_PAY_SERVICE_TOKEN` is unset, which disables the route on purpose |
 | A cash payment didn't record on Monday | §8 — the `metadata.service === "cash-pay"` branch in `/webhook/stripe`, then `cashPay/monday.js` `recordCashPayment`. It returns 500 so Stripe retries; check the logs for `[cash-pay]` |
 | "Why is the cash pay link a Payment Link and not a Checkout Session?" | §8 — a Checkout Session expires in at most 24 hours and the link is texted and chased for a fortnight. Do not align the two flows |
@@ -331,3 +332,27 @@ The **15-day reminder loop** and a **branded cash-pay page** on the frontend. Th
 date-arrival automation on the order board (the same shape the Command Center's MR ladder uses);
 the patient currently lands on Stripe's own hosted confirmation, which is why `after_completion`
 sets a custom message rather than redirecting to a page that does not exist.
+
+---
+
+## 9. ⚠️ Redis down = pay links silently stop. The watchdog is the alarm
+
+From 11:36pm ET on 2026-10-19 (Railway re-attached the Redis volume; Redis then went quiet) every
+`/webhook/monday` call returned 500 for most of a day and nobody knew. **Monday does not resend
+those webhooks**, so every row moved into Send Invoice meanwhile kept an empty Pay Link Token / URL.
+
+- `backend/src/redisWatch.js` pings Redis once a minute on its own timer (5 s timeout) and pushes an
+  ntfy alert after **3 failed pings in a row**, again **every hour** while down, and once when Redis
+  answers again. It needs `NTFY_URL` + `NTFY_TOPIC` (env only; the boot log says when they're unset).
+  Alerts carry times, counts and Redis's error text, never a patient. `backend/test/redisWatch.test.js`.
+- ⚠️ **`/health` is mounted ABOVE `app.use(globalLimiter)`**: the limiter keeps its counts in Redis, so
+  behind it `/health` hung with Redis down. It answers 200 either way (`status: "degraded"`,
+  `redis: "disconnected"`, `redisDownSince`), so a deploy health check never holds a release back over
+  Redis; the alert is the alarm.
+- **After an outage:** restart the Redis service, confirm `/health` says `connected`, then move each
+  row that entered Send Invoice during the outage out of the group and back in (that re-fires the
+  webhook). A re-fire is safe: the route looks for the item's token first (`getTokenForItem`) and
+  writes that same link back, never a second one.
+- Every other route still sits behind the Redis limiter, so with Redis down they fail too. That is
+  not a bug to "fix" by failing the limiter open: the routes themselves need Redis (tokens, sessions,
+  the SMS queue), and an unthrottled Stripe-minting route is worse.

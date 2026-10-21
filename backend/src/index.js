@@ -7,11 +7,13 @@ const cookieParser = require("cookie-parser");
 const PDFDocument = require("pdfkit");
 const { verifyPaymentToken, generatePaymentToken, requireAuth, logout, COOKIE_OPTIONS } = require("./auth");
 const { getPatientPaymentData, storePaymentLinkInMonday, recordPaymentInMonday, writeLongText } = require("./monday");
-const { redis, healthCheck, getPaymentToken, getTokenForItem, markTokenPaid, isChargeProcessed, markChargeProcessed, logEvent } = require("./redis");
+const { redis, getPaymentToken, getTokenForItem, markTokenPaid, isChargeProcessed, markChargeProcessed, logEvent } = require("./redis");
 const { COMPANY, COLUMNS, SECONDARY_BOARD_ID, SEND_INVOICE_GROUP_ID } = require("./config");
 const { sendSMS, buildPaymentMessage, buildFollowUpMessage } = require("./ringcentral");
 const { enqueueSMS } = require("./smsQueue");
 const cashPay = require("./cashPay");
+const { createRedisWatch, withTimeout } = require("./redisWatch");
+const { notify, ntfyConfigured } = require("./ntfy");
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
@@ -164,6 +166,30 @@ app.use(express.json());
 app.use(cookieParser());
 app.set("trust proxy", 1);
 
+// ─── Health check ───
+// ABOVE `app.use(globalLimiter)` on purpose: that limiter keeps its counts in
+// Redis, so with Redis down every route behind it hangs or 500s, /health
+// included, and the one route meant to say "Redis is down" couldn't answer
+// (2026-10-21: it timed out for 60 s while the Stripe webhook, mounted above
+// the limiter, answered in half a second). Its ping is bounded too. It stays
+// 200 either way and says the state in the body, so a deploy health check
+// never holds a release back over Redis; the watchdog's alert is the alarm.
+const redisWatch = createRedisWatch({ ping: () => redis.ping(), notify });
+app.get("/health", async (req, res) => {
+  let redisOk = false;
+  try { await withTimeout(redis.ping(), 2000); redisOk = true; } catch { redisOk = false; }
+  const w = redisWatch.state;
+  res.json({
+    status: redisOk ? "ok" : "degraded",
+    service: "pay-secondary",
+    redis: redisOk ? "connected" : "disconnected",
+    redisDownSince: w.downSince ? new Date(w.downSince).toISOString() : null,
+    alerts: ntfyConfigured(),
+    stripe: !!process.env.STRIPE_SECRET_KEY,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // ─── Rate limiters ───
 const redisStore = (prefix) => new RedisStore({ sendCommand: (...args) => redis.call(...args), prefix: `rl:payment:${prefix}:` });
 const globalLimiter = rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false, store: redisStore("global") });
@@ -185,18 +211,6 @@ const cashPayLimiter = rateLimit({
   store: redisStore("cash-pay"),
 });
 cashPay.register(app, { stripe, limiter: cashPayLimiter });
-
-// ─── Health check ───
-app.get("/health", async (req, res) => {
-  const redisOk = await healthCheck();
-  res.json({
-    status: "ok",
-    service: "pay-secondary",
-    redis: redisOk ? "connected" : "disconnected",
-    stripe: !!process.env.STRIPE_SECRET_KEY,
-    timestamp: new Date().toISOString(),
-  });
-});
 
 // ═══════════════════════════════════════════════════════
 // AUTH ROUTES
@@ -781,4 +795,8 @@ app.get("/api/stripe-config", apiLimiter, requireAuth, (req, res) => {
 const PORT = process.env.PORT || 3002;
 app.listen(PORT, () => {
   console.log(`[pay-secondary] Payment API running on port ${PORT}`);
+  if (!ntfyConfigured()) {
+    console.error("[redis-watch] NTFY_URL / NTFY_TOPIC are not set: a Redis outage will NOT push an alert");
+  }
+  redisWatch.start();
 });
