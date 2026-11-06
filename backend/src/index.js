@@ -186,6 +186,7 @@ app.get("/health", async (req, res) => {
     redisDownSince: w.downSince ? new Date(w.downSince).toISOString() : null,
     alerts: ntfyConfigured(),
     stripe: !!process.env.STRIPE_SECRET_KEY,
+    friday: require("./cashPay/monday").fridayForward.status(),
     timestamp: new Date().toISOString(),
   });
 });

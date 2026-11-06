@@ -11,6 +11,15 @@
 // failed write cannot report success.
 
 const { ORDER_BOARD_ID, ORDER_COLUMNS, ORDER_STATUS_INDEX, CASH_PAY_ACTION_INDEX } = require("./config");
+const { createFridayForward } = require("../fridayForward");
+
+/* The Friday forward (src/fridayForward.js, the module every writer of the boards Friday copies carries): every
+   mutation Monday ACCEPTED through query() below is handed to Friday afterwards, as sent, on a timer that never throws
+   and never delays Monday's answer. OFF unless FRIDAY_FORWARD=1 with FRIDAY_URL and FRIDAY_API_KEY (Railway variables,
+   never in this public tree); FRIDAY_BOARD_IDS names the New Order Board. Only this file's writes are forwarded: the
+   Secondary Claims board (../monday.js, ../smsQueue.js) is not a board Friday copies. Keep query() this file's one
+   Monday path: test/fridayForwardWiring.test.js fails on another. */
+const fridayForward = createFridayForward({ env: process.env, log: console.log, service: "coins-form-payment" });
 
 const API_URL = "https://api.monday.com/v2";
 const MAX_RETRIES = 3;
@@ -43,6 +52,8 @@ async function query(gql, variables = {}, attempt = 1) {
 
   const data = await res.json();
   if (data.errors) throw new Error(`Monday API error: ${JSON.stringify(data.errors)}`);
+  // only a mutation Monday answered with data (a read is never sent; onMutation never throws)
+  if (data.data && typeof data.data === "object") fridayForward.onMutation({ query: gql, variables, data: data.data });
   return data.data;
 }
 
@@ -162,5 +173,5 @@ function stampCashPayLinkSent(itemId, date) {
 
 module.exports = {
   getOrder, storeCashPayLink, recordCashPayment, setCashPayAction,
-  stampCashPayLinkSent, CASH_PAY_ACTION_INDEX,
+  stampCashPayLinkSent, CASH_PAY_ACTION_INDEX, fridayForward,
 };

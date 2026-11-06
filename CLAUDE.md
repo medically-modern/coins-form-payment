@@ -79,7 +79,7 @@ Two Monday webhooks drive it: `POST /webhook/monday` (mint a pay link) and
 ## 4. ⚠️ There is NO linter and NO typecheck script, and the tests cover ONE slice
 
 `npm test` (`node --test`, no dependency added) runs **`backend/test/*.test.js`**, which today is
-**the cash pay rules** — the amounts, the refusals, the Stripe payload — plus one guard
+**the cash pay rules**, the Friday forward's wiring (§6) — the amounts, the refusals, the Stripe payload — plus one guard
 (`noEstimator.test.js`, §5) that fails if an OOP estimator is ever ported back into `src/`. The
 cash pay tests exist because that slice decides whether a patient is charged and for how much (§8).
 
@@ -149,6 +149,7 @@ makes the same argument for cash pay pricing).
 - ⚠️ **The Stripe webhook must stay above `express.json()`** in `backend/src/index.js` — it needs
   the raw body (`express.raw`) to verify the signature. It is mounted first on purpose; moving it
   below the JSON parser breaks signature verification.
+- **The Friday forward** (`backend/src/fridayForward.js`, the same CommonJS module every writer of the boards Friday copies carries; Friday is Medically Modern's own board app, `medically-modern/friday`, which copies the New Order Board from 2026-11-06): every mutation Monday ACCEPTED through cash pay's `query()` (`backend/src/cashPay/monday.js`: no `errors`, data in the answer) is handed to Friday afterwards at `POST {FRIDAY_URL}/v1/monday/write`, from an in-memory queue drained in order on a timer. It never throws and never delays Monday's answer, so the money path is untouched; a restart loses what was queued (Friday's hourly check and sync from Monday are the net). **OFF unless `FRIDAY_FORWARD=1` with `FRIDAY_URL`, `FRIDAY_API_KEY` and `FRIDAY_BOARD_IDS=18405457690`** (Railway variables, never in this tree). Only the order board's writes: the Secondary Claims modules (`backend/src/monday.js`, `smsQueue.js`) carry no forward, since Friday doesn't copy that board. `/health` shows it under `friday`. ⚠️ Keep `query()` cash pay's one Monday path: `backend/test/fridayForwardWiring.test.js` runs the real module with fetch stubbed and fails on another.
 - **This repo is PUBLIC.** No secrets, no keys, no tokens in the tree.
 
 ---
