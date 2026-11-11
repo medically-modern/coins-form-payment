@@ -36,6 +36,12 @@ async function writeSmsStatus(itemId, label) {
     const query = `mutation ($boardId: ID!, $itemId: ID!, $columnId: String!, $value: JSON!) {
       change_column_value(board_id: $boardId, item_id: $itemId, column_id: $columnId, value: $value) { id }
     }`;
+    const variables = {
+      boardId: BOARD_ID,
+      itemId: String(itemId),
+      columnId: COLUMNS.SMS_STATUS,
+      value: JSON.stringify({ label }),
+    };
     // Use mondayQuery directly
     const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
     const res = await fetch("https://api.monday.com/v2", {
@@ -45,19 +51,14 @@ async function writeSmsStatus(itemId, label) {
         Authorization: MONDAY_TOKEN,
         "API-Version": "2024-10",
       },
-      body: JSON.stringify({
-        query,
-        variables: {
-          boardId: BOARD_ID,
-          itemId: String(itemId),
-          columnId: COLUMNS.SMS_STATUS,
-          value: JSON.stringify({ label }),
-        },
-      }),
+      body: JSON.stringify({ query, variables }),
     });
     const data = await res.json();
     if (data.errors) {
       console.error(`[sms-queue] Failed to write SMS status for ${itemId}:`, data.errors);
+    } else if (data.data && typeof data.data === "object") {
+      // the Friday forward (./friday.js): a write Monday accepted, as sent (onMutation never throws)
+      require("./friday").fridayForward.onMutation({ query, variables, data: data.data });
     }
   } catch (err) {
     console.error(`[sms-queue] Error writing SMS status for ${itemId}:`, err.message);

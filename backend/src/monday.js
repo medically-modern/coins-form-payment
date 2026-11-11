@@ -1,4 +1,7 @@
 const { SECONDARY_BOARD_ID, COLUMNS, SUBITEM_COLUMNS } = require("./config");
+// The Friday forward (./friday.js): every mutation Monday accepted through mondayQuery() is handed to Friday afterwards, as
+// sent (the Secondary Claims Board, which Friday copies from 2026-11-11). Keep mondayQuery() this file's one Monday path.
+const { fridayForward } = require("./friday");
 
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
 const API_URL = "https://api.monday.com/v2";
@@ -45,6 +48,8 @@ async function mondayQuery(query, variables = {}, _attempt = 1) {
   if (data.errors) {
     throw new Error(`Monday API error: ${JSON.stringify(data.errors)}`);
   }
+  // only a mutation Monday answered with data (a read is never sent; onMutation never throws)
+  if (data.data && typeof data.data === "object") fridayForward.onMutation({ query, variables, data: data.data });
   return data.data;
 }
 
