@@ -32,7 +32,7 @@ function withTimeout(promise, ms) {
 
 /**
  * ping:   () => Promise — resolves when Redis answers
- * notify: ({ title, body, priority, tags }) => Promise — never expected to throw, but guarded
+ * notify: ({ title, body, priority, tags, level }) => Promise — never expected to throw, but guarded
  * now:    () => ms
  */
 function createRedisWatch({ ping, notify, now = Date.now, ...opts }) {
@@ -75,6 +75,7 @@ function createRedisWatch({ ping, notify, now = Date.now, ...opts }) {
             `Last error: ${state.lastError}`,
           priority: "high",
           tags: "rotating_light",
+          level: "error",
         });
       }
       return state;
@@ -96,6 +97,7 @@ function createRedisWatch({ ping, notify, now = Date.now, ...opts }) {
           `Any row moved into Send Invoice while it was down still has no pay link: move it out and back in.`,
         priority: "default",
         tags: "white_check_mark",
+        level: "info",
       });
     }
     return state;

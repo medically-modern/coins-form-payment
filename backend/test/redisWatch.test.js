@@ -50,6 +50,7 @@ test("three failures in a row send one alert, with the time it went down", async
   assert.match(h.sent[0].body, /2026-10-20T03:36:00\.000Z/);
   assert.match(h.sent[0].body, /connect ETIMEDOUT/);
   assert.equal(h.sent[0].priority, "high");
+  assert.equal(h.sent[0].level, "error", "a Redis outage needs a person: lvl-error despite priority high");
 });
 
 test("it reminds every repeatMs while Redis stays down", async () => {
@@ -70,6 +71,7 @@ test("Redis answering again after an alert sends one recovery alert", async () =
   await h.watch.check();
   assert.equal(h.sent.length, 2);
   assert.match(h.sent[1].title, /reached Redis again/);
+  assert.equal(h.sent[1].level, "info");
   assert.equal(h.watch.state.downSince, null);
 });
 
