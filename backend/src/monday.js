@@ -4,7 +4,8 @@ const { SECONDARY_BOARD_ID, COLUMNS, SUBITEM_COLUMNS } = require("./config");
 const { fridayForward } = require("./friday");
 
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
-const API_URL = "https://api.monday.com/v2";
+// Monday's API address. A setting so the January cutover can point it at Friday (/v2); unset, it is Monday.
+const API_URL = process.env.MONDAY_API_URL || "https://api.monday.com/v2";
 
 // ─── Input validation ───
 

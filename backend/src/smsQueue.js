@@ -7,6 +7,9 @@ const { redis, logEvent } = require("./redis");
 const { sendSMS, getMessageStatus } = require("./ringcentral");
 const { COLUMNS } = require("./config");
 
+// Monday's API address. A setting so the January cutover can point it at Friday (/v2); unset, it is Monday.
+const MONDAY_API_URL = process.env.MONDAY_API_URL || "https://api.monday.com/v2";
+
 const QUEUE_KEY = "pay-secondary:sms-queue";
 const PROCESSING_KEY = "pay-secondary:sms-processing";
 const DELAY_BETWEEN_SENDS_MS = 2000; // 2s between texts
@@ -44,7 +47,7 @@ async function writeSmsStatus(itemId, label) {
     };
     // Use mondayQuery directly
     const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
-    const res = await fetch("https://api.monday.com/v2", {
+    const res = await fetch(MONDAY_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

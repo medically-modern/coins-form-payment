@@ -90,7 +90,7 @@ test("every Monday write path hands its accepted writes to the one forward, afte
   const ws = sq.slice(sq.indexOf("async function writeSmsStatus("), sq.indexOf("// ─── Enqueue a text"));
   const sh = ws.indexOf("fridayForward.onMutation({ query, variables, data: data.data })");
   assert.ok(sh > ws.indexOf("if (data.errors)"), "the SMS status write forwards only what Monday accepted");
-  assert.equal((sq.match(/fetch\("https:\/\/api\.monday\.com/g) || []).length, 1, "writeSmsStatus is the SMS queue's one Monday call");
+  assert.equal((sq.match(/fetch\(MONDAY_API_URL/g) || []).length, 1, "writeSmsStatus is the SMS queue's one Monday call");
   for (const f of ["src/monday.js", "src/cashPay/monday.js"]) assert.doesNotMatch(read(f), /createFridayForward/, `${f} uses ../friday.js, never an instance of its own`);
   assert.match(read("src/index.js"), /friday: require\("\.\/cashPay\/monday"\)\.fridayForward\.status\(\)/, "/health says whether it is on");
 });

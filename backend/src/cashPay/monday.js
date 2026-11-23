@@ -16,7 +16,8 @@ const { ORDER_BOARD_ID, ORDER_COLUMNS, ORDER_STATUS_INDEX, CASH_PAY_ACTION_INDEX
    file's one Monday path: test/fridayForwardWiring.test.js fails on another. */
 const { fridayForward } = require("../friday");
 
-const API_URL = "https://api.monday.com/v2";
+// Monday's API address. A setting so the January cutover can point it at Friday (/v2); unset, it is Monday.
+const API_URL = process.env.MONDAY_API_URL || "https://api.monday.com/v2";
 const MAX_RETRIES = 3;
 const BASE_DELAY_MS = 1000;
 

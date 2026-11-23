@@ -8,6 +8,7 @@
 
 const BOARD_ID = "18407459988";
 const MONDAY_TOKEN = process.env.MONDAY_TOKEN;
+const MONDAY_API_URL = process.env.MONDAY_API_URL || "https://api.monday.com/v2";
 
 if (!MONDAY_TOKEN) {
   console.error("Set MONDAY_TOKEN env var");
@@ -15,7 +16,7 @@ if (!MONDAY_TOKEN) {
 }
 
 async function gql(query) {
-  const res = await fetch("https://api.monday.com/v2", {
+  const res = await fetch(MONDAY_API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
