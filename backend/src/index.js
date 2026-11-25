@@ -187,6 +187,8 @@ app.get("/health", async (req, res) => {
     alerts: ntfyConfigured(),
     stripe: !!process.env.STRIPE_SECRET_KEY,
     friday: require("./cashPay/monday").fridayForward.status(),
+    // the Friday read shadow (src/fridayShadow.js, one instance in src/friday.js): on or off and why, and its counts
+    friday_shadow: require("./friday").fridayShadow.health(),
     timestamp: new Date().toISOString(),
   });
 });

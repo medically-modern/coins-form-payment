@@ -14,7 +14,7 @@ const { ORDER_BOARD_ID, ORDER_COLUMNS, ORDER_STATUS_INDEX, CASH_PAY_ACTION_INDEX
 /* The Friday forward (../friday.js, the service's one instance): every mutation Monday ACCEPTED through query() below is
    handed to Friday afterwards, as sent, on a timer that never throws and never delays Monday's answer. Keep query() this
    file's one Monday path: test/fridayForwardWiring.test.js fails on another. */
-const { fridayForward } = require("../friday");
+const { fridayForward, fridayShadow } = require("../friday");
 
 // Monday's API address. A setting so the January cutover can point it at Friday (/v2); unset, it is Monday.
 const API_URL = process.env.MONDAY_API_URL || "https://api.monday.com/v2";
@@ -28,6 +28,7 @@ const numericId = (id, label = "ID") => {
 };
 
 async function query(gql, variables = {}, attempt = 1) {
+  const startedAt = Date.now();
   const res = await fetch(API_URL, {
     method: "POST",
     headers: {
@@ -46,10 +47,15 @@ async function query(gql, variables = {}, attempt = 1) {
     return query(gql, variables, attempt + 1);
   }
 
-  const data = await res.json();
+  // The body as text, then parsed: the same errors as res.json(), and the read shadow gets Monday's answer as it came.
+  const text = await res.text();
+  const data = JSON.parse(text);
   if (data.errors) throw new Error(`Monday API error: ${JSON.stringify(data.errors)}`);
   // only a mutation Monday answered with data (a read is never sent; onMutation never throws)
   if (data.data && typeof data.data === "object") fridayForward.onMutation({ query: gql, variables, data: data.data });
+  // a read Monday answered with data (the final try: a retry returned above), handed to the read shadow on a later turn and
+  // never awaited; the shadow skips a mutation itself and never throws
+  if (res.ok && data.data && typeof data.data === "object") fridayShadow.onRead({ query: gql, variables, apiVersion: "2024-10", status: res.status, text, ms: Date.now() - startedAt });
   return data.data;
 }
 
